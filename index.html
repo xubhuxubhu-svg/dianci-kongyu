@@ -58,8 +58,8 @@ html,body{height:100%;margin:0;background:var(--ink);color:var(--fg);font-family
 #thrTxt{position:absolute;left:12px;bottom:70px;color:#ffd84a;font-weight:900;font-size:14px;text-shadow:0 1px 3px #000,0 0 6px #000}
 .thrBar{position:absolute;right:12px;bottom:72px;width:60px;height:9px;border-radius:6px;background:#00000080;border:1px solid #ffffff70;overflow:hidden}
 #thrFill{height:100%;width:0;background:linear-gradient(90deg,#5fd27a,#ffb627)}
-#mprAgain.wait{background:var(--panel2);border-color:var(--line);color:var(--muted)}
-#mprAgain.pulse{animation:pulse 1s infinite}
+#mprNext.wait,#mprAgain.wait{background:var(--panel2);border-color:var(--line);color:var(--muted)}
+#mprNext.pulse,#mprAgain.pulse{animation:pulse 1s infinite}
 @keyframes pulse{50%{transform:scale(1.04);box-shadow:0 0 0 6px #ffb62744}}
 /* 雲端存檔 */
 .acct{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#ffffff0a;border:1px solid var(--line);border-radius:10px;padding:6px 6px 6px 12px;font-size:13px}
@@ -407,7 +407,8 @@ details.settings .inner{display:flex;flex-direction:column;gap:12px}
     <h2 class="title" id="mprTitle" style="font-size:34px">勝利！</h2>
     <div id="mprTable"></div>
     <p class="hint" id="mprNote"></p>
-    <button class="primary" id="mprAgain">再來一局</button>
+    <button class="primary" id="mprNext">下一關</button>
+    <button id="mprAgain">再來一局（同一關）</button>
     <div class="btns"><button id="mprBack">回到房間</button><button id="mprLeave">離開房間</button></div>
   </div>
 </div>
@@ -2225,7 +2226,7 @@ function RoomHub(send){
     return {reason:r.reason,winner:a[0]?a[0].id:null,players:a.map(p=>({id:p.id,name:p.name,plane:p.plane,ai:!!p.ai,res:p.res||null,rank:p.rank,rm:!!p.rm}))}}
   function closeMatch(r,reason){
     if(r.state!=='playing')return;
-    clearTimeout(r.endT);r.state='result';r.reason=reason;r.resultAt=Date.now();
+    clearTimeout(r.endT);r.state='result';r.reason=reason;r.pend=null;r.resultAt=Date.now();
     for(const p of list(r)){if(!p.res)p.res={fin:false,prog:p.lastProg||0,touches:'',coins:'',live:true};p.rm=!!p.ai}
     toRoom(r,'result',resView(r));
   }
@@ -2263,7 +2264,7 @@ function RoomHub(send){
     }else if(r.state==='starting'){
       r.state='lobby';for(const x of humans(r)){x.lr=false;x.ready=false}
       toRoom(r,'abort',{name:p?p.name:''});
-    }else if(r.state==='result'){toRoom(r,'rematchState',{ids:humans(r).filter(x=>x.rm).map(x=>x.id)})}
+    }else if(r.state==='result'){toRoom(r,'rematchState',{ids:humans(r).filter(x=>x.rm).map(x=>x.id),pend:r.pend})}
     if(r.state==='lobby')for(const x of humans(r))x.lr=false;
     sendRoom(r);
   }
@@ -2324,11 +2325,14 @@ function RoomHub(send){
     case 'done':{
       let who=p;if(d.ai){const a=r.players.get(d.ai);if(!a||!a.ai||r.host!==id)return;who=a}
       return done(r,who,d)}
-    case 'rematch':
-      if(r.state!=='result')return;p.rm=true;
-      if(list(r).length>=2&&list(r).every(x=>x.rm))startMatch(r,true);
-      else toRoom(r,'rematchState',{ids:humans(r).filter(x=>x.rm).map(x=>x.id)});
-      return;
+    case 'rematch':{  // 再來一局（同一關）或下一關：大家都同意同一個選擇就開始
+      if(r.state!=='result')return;
+      const want=d.next&&r.level<30?'next':'same';
+      if(r.pend!==want){r.pend=want;for(const x of humans(r))x.rm=false}
+      p.rm=true;
+      if(list(r).length>=2&&list(r).every(x=>x.rm)){if(r.pend==='next')r.level=Math.min(30,r.level+1);r.pend=null;startMatch(r,true)}
+      else toRoom(r,'rematchState',{ids:humans(r).filter(x=>x.rm).map(x=>x.id),pend:r.pend,by:p.name});
+      return}
     case 'back':
       if(r.state==='result'){r.state='lobby';for(const x of humans(r)){x.lr=false;x.ready=false;x.res=null;x.rm=false}}
       sendRoom(r);return;
@@ -2373,7 +2377,7 @@ function bindSock(so){
   so.on('rank',d=>{if(so===MP.sock)onRank(d)});
   so.on('endIn',d=>{if(so!==MP.sock)return;MP.endAt=clock+d.ms;if(!MP.myRank&&!MP.myOut)banner('有人抵達終點了！'+Math.round(d.ms/1000)+' 秒內飛到終點才有名次','info',2600)});
   so.on('result',r=>{if(so===MP.sock)mpResult(r)});
-  so.on('rematchState',d=>{if(so===MP.sock)mpRematchUI(d.ids)});
+  so.on('rematchState',d=>{if(so===MP.sock)mpRematchUI(d.ids,d.pend)});
   so.on('abort',d=>{if(so!==MP.sock)return;toast('系統',(d.name||'有玩家')+' 離開了，這局取消',true);mpEndMatch();showMP()});
   so.on('left',d=>{if(so!==MP.sock)return;toast('系統',(d.name||'玩家')+' 離開了',true);rtcClose(d.id);updateVoiceUI()});
   so.on('rtc',d=>{if(so===MP.sock)onRtc(d)});
@@ -2458,7 +2462,7 @@ function mpStart(d){
   MP.others=new Map();
   for(const id of MP.ids){if(id===myId())continue;const p=(MP.room&&MP.room.players.find(x=>x.id===id))||{};
     MP.others.set(id,{name:p.name||'玩家',plane:p.plane||'blue_cat',ai:!!p.ai,lvl:p.lvl,s:null,t:0,rank:0,out:false})}
-  const a=$('#mprAgain');a.disabled=false;delete a.dataset.told;
+  MP.level=d.level;for(const id of ['#mprNext','#mprAgain']){const a=$(id);a.disabled=false;delete a.dataset.told}
   showOnly(null);resize();
   startLevel(d.level);
   if(isHost())MP.ai=[...MP.others.entries()].filter(([,o])=>o.ai).map(([id,o])=>aiNew(id,o));
@@ -2539,21 +2543,26 @@ function mpResult(r){
       return '<div class="mprRow'+(p.rank===1?' win':'')+(p.id===me?' me':'')+'"><span class="no2">'+p.rank+'</span><b>'+esc(p.name)+(p.id===me?'（你）':'')+'</b><span>'+st+'</span><span>'+tc+'</span><span>'+cn+'</span></div>'}).join('');
     $('#mprTable').innerHTML='<div class="mprRow head"><span>名次</span><span>玩家</span><span>狀態</span><span>被電</span><span>星星</span></div>'+rows;
     const anyFin=r.players.some(p=>p.res&&p.res.fin);
-    $('#mprNote').textContent=(anyFin?'依抵達終點的先後排名，沒抵達的人比飛得多遠。':'大家都出局了，飛得最遠的人獲勝。')+'　要再來一局嗎？';
-    if(first){const a=$('#mprAgain');a.disabled=false;a.className='primary';a.textContent='再來一局'}
-    mpRematchUI(r.players.filter(p=>p.rm&&!p.ai).map(p=>p.id));
+    $('#mprNote').textContent=(anyFin?'依抵達終點的先後排名，沒抵達的人比飛得多遠。':'大家都出局了，飛得最遠的人獲勝。')+'　要玩下一關，還是同一關再來一局？';
+    mpRematchUI([],null);
   };
   if(first)setTimeout(()=>{if(MP.lastRes===r)render()},900);else if(MP.lastRes===r)render();
 }
-function mpRematchUI(ids){
-  const a=$('#mprAgain');if(a.disabled)return;const me=myId(),mine=ids.includes(me),others=humanPeers(),agreed=others.filter(p=>ids.includes(p.id)).length;
-  a.className=mine?'wait':'primary'+(agreed?' pulse':'');
-  a.textContent=mine?(others.length?'等待其他玩家同意…（'+agreed+'/'+others.length+'）':'準備中…'):agreed?'有人想再來一局！按這裡接受':'再來一局';
-  if(agreed&&!mine&&!a.dataset.told){a.dataset.told='1';toast('系統','有人想再來一局！',true)}
+function mpRematchUI(ids,pend){
+  const nx=$('#mprNext'),ag=$('#mprAgain');if(ag.disabled)return;
+  const me=myId(),mine=ids.includes(me),others=humanPeers(),agreed=others.filter(p=>ids.includes(p.id)).length,lv=MP.level||1;
+  nx.hidden=lv>=30;
+  const base=()=>{nx.className='primary';nx.textContent='下一關（第 '+(lv+1)+' 關）';ag.className='';ag.textContent='再來一局（同一關）'};
+  base();
+  if(!pend||(!mine&&!agreed))return;
+  const b=pend==='next'?nx:ag,cnt=others.length?'（'+agreed+'/'+others.length+'）':'';
+  if(mine){b.className='wait';b.textContent=others.length?'等待其他玩家同意…'+cnt:'準備中…'}
+  else{b.className='primary pulse';b.textContent=(pend==='next'?'有人想玩第 '+(lv+1)+' 關！':'有人想再來一局！')+'按這裡同意';
+    if(b.dataset.told!==pend){b.dataset.told=pend;toast('系統',pend==='next'?'有人想玩下一關！':'有人想再來一局！',true)}}
 }
-function mpAgainOff(t){const a=$('#mprAgain');a.disabled=true;a.className='wait';a.textContent=t}
-$('#mprAgain').addEventListener('click',()=>{const a=$('#mprAgain');if(a.disabled||!MP.sock)return;ac();startMusic();MP.sock.emit('rematch');
-  a.className='wait';a.textContent=humanPeers().length?'等待其他玩家同意…':'準備中…'});
+function mpAgainOff(t){for(const id of ['#mprNext','#mprAgain']){const a=$(id);a.disabled=true;a.className='wait'}$('#mprNext').textContent=t;$('#mprAgain').textContent='請按「回到房間」'}
+for(const [id,next] of [['#mprNext',true],['#mprAgain',false]])$(id).addEventListener('click',()=>{const a=$(id);if(a.disabled||!MP.sock)return;ac();startMusic();
+  MP.sock.emit('rematch',{next});a.className='wait';a.textContent=humanPeers().length?'等待其他玩家同意…':'準備中…'});
 function mpEndMatch(){MP.resShown=false;MP.lastRes=null;MP.myRes=null;MP.on=false;MP.others=null;MP.ai=null;MP.ids=null;MP.ready=false;MP.myRank=0;MP.myOut=false;MP.endAt=0;MP.goAt=0;
   mpWaitMsg(null);mode='menu';course=buildLevel(1);resetRun();$('#hud').hidden=true;$('#camBox').hidden=true;$('#thrBox').hidden=true;thrShown=null;resize()}
 function mpLeaveRoom(){if(MP.sock){if(MP.sock.local)MP.sock.close();else MP.sock.emit('leave')}rtcClose();if(MP.stream){MP.stream.getTracks().forEach(t=>t.stop());MP.stream=null}MP.room=null;mpEndMatch();showMP()}
