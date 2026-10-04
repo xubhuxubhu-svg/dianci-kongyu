@@ -54,6 +54,7 @@ html,body{height:100%;margin:0;background:var(--ink);color:var(--fg);font-family
 #thrBox{position:fixed;left:0;right:0;height:64px;z-index:6;pointer-events:none}
 .thrBtn{position:absolute;top:0;width:64px;height:64px;padding:0;border-radius:50%;border:3px solid #fff;color:#fff;font-size:16px;font-weight:900;box-shadow:0 4px 14px #0008;touch-action:none;pointer-events:auto;-webkit-user-select:none;user-select:none}
 #stopBtn{left:10px;background:#e5484de0}#fwdBtn{right:10px;background:#2fae5ae0}
+#fwdBtn.cool{background:#555c;color:#ccc}
 #stopBtn.on{background:#ff8a8d;transform:scale(.94)}#fwdBtn.on{background:#ffb627;color:#1b1305;transform:scale(.94)}
 #thrTxt{position:absolute;left:12px;bottom:70px;color:#ffd84a;font-weight:900;font-size:14px;text-shadow:0 1px 3px #000,0 0 6px #000}
 .thrBar{position:absolute;right:12px;bottom:72px;width:60px;height:9px;border-radius:6px;background:#00000080;border:1px solid #ffffff70;overflow:hidden}
@@ -1146,29 +1147,42 @@ function unfreeze(ok){
 /* ================= 每一格的遊戲更新 ================= */
 let zoneWind=0,zoneFog=0,zoneLoop=0,zoneSand=0;
 let thr=1,fwdHeld=false,stopHeld=false,thrShown=null;const fwdKeys=new Set(),stopKeys=new Set();
-const BOOST=1.5;
+let boostHold=0,boostMul=1,coolUntil=0,ohVis=false;
+const BOOST_MAX_HOLD=30,COOL_MS=5000;
+// 連續按住加速的時間 → 速度倍數
+function ladder(h,manual){return h<3?(manual?1:1.5):h<10?2:h<15?2.5:h<20?3:h<25?4:5}
 const manualOn=()=>S.advance==='manual'&&!window.__dfAuto;
 function updateThrottle(dt){
-  const run=mode==='play'||mode==='count',boost=fwdHeld||fwdKeys.size>0,brake=stopHeld||stopKeys.size>0;
-  let want=1,rate=4;
-  if(window.__dfAuto){want=1}
-  else if(run&&S.advance==='manual'){
-    want=boost?BOOST:0;
-    if(tiltOn&&betaNow!=null&&betaZero!=null){
+  const run=mode==='play'||mode==='count',cool=clock<coolUntil,brake=stopHeld||stopKeys.size>0;
+  let boost=(fwdHeld||fwdKeys.size>0)&&!cool&&!brake;
+  if(boost&&mode==='play'){boostHold+=dt;if(boostHold>=BOOST_MAX_HOLD){boostHold=0;coolUntil=clock+COOL_MS;boost=false;sfx.bump&&sfx.bump();banner('引擎過熱！5 秒後才能再加速','',2400)}}
+  else boostHold=0;
+  ohVis=clock<coolUntil;
+  const manual=S.advance==='manual';
+  boostMul=boost?ladder(boostHold,manual):1;
+  let want=1,rate=3;
+  if(window.__dfAuto){want=boost?boostMul:1}
+  else if(run&&manual){
+    want=boost?boostMul:0;
+    if(!boost&&tiltOn&&betaNow!=null&&betaZero!=null){
       const f=Math.max(betaZero-betaNow,vert?-99:gamma-gammaZero);          // 往前傾（向右飛時往右傾也可以）
-      want=Math.max(want,clamp((f-5)/13,0,1)+clamp((f-20)/14,0,BOOST-1));
+      want=clamp((f-5)/13,0,1)+clamp((f-20)/14,0,.5);
     }
     if(brake){want=0;thr=0}                                                     // 手動：點一下立刻煞住
-    rate=want>thr?3:7;
+    rate=want>thr?2.5:7;
   }else if(run){
-    want=brake?0:boost?BOOST:1;rate=brake?14:3;                                // 自動：按住停止就停，放開恢復
+    want=brake?0:boostMul;rate=brake?14:want>thr?2.5:4;                        // 自動：按住停止就停，放開恢復
   }
   thr+=(want-thr)*Math.min(1,rate*dt);if(Math.abs(want-thr)<.02)thr=want;
-  const show=run&&!window.__dfAuto;
+  const show=run&&(!window.__dfAuto||!!window.__dfShowThr);
   if(show!==thrShown){thrShown=show;$('#thrBox').hidden=!show;if(show)placeThr()}
-  if(show){$('#thrFill').style.width=Math.round(clamp(thr/BOOST,0,1)*100)+'%';
-    $('#fwdBtn').classList.toggle('on',boost);$('#stopBtn').classList.toggle('on',brake);
-    const w=$('#thrTxt'),t=mode!=='play'?'':thr<.12?'原地等待':thr>1.15?'加速中':'';if(w.textContent!==t)w.textContent=t}
+  if(show){
+    const f=$('#thrFill'),pct=ohVis?(coolUntil-clock)/COOL_MS:boostHold/BOOST_MAX_HOLD;
+    f.style.width=Math.round(clamp(pct,0,1)*100)+'%';f.style.background=ohVis?'#555':pct>.8?'#ff4d4d':'';
+    const fb=$('#fwdBtn');fb.classList.toggle('on',boost);fb.classList.toggle('cool',ohVis);
+    const ft=ohVis?'冷卻':boost&&boostMul>1?'×'+boostMul:'加速';if(fb.textContent!==ft)fb.textContent=ft;
+    $('#stopBtn').classList.toggle('on',brake);
+    const w=$('#thrTxt'),t=mode!=='play'?'':ohVis?'過熱冷卻 '+Math.ceil((coolUntil-clock)/1000)+' 秒':thr<.12?'原地等待':thr>1.15?'速度 '+(Math.round(thr*10)/10)+' 倍':'';if(w.textContent!==t)w.textContent=t}
 }
 function placeThr(){const b=$('#thrBox');if(MP.on){b.style.top=(splitH-32)+'px';b.style.bottom='auto'}else{b.style.top='auto';b.style.bottom='calc(env(safe-area-inset-bottom,0px) + 14px)'}}
 function update(dt,now){
@@ -1567,7 +1581,7 @@ function drawMain(now){
   ctx.restore();
   drawScreenFx(now,t);
 }
-let viewMin=-40,viewMax=2000,oppView=false;const OPPSHOW=new Set(['peak','bar','sign','spin']);
+let viewMin=-40,viewMax=2000,oppView=false;const OPPSHOW=new Set(['peak','bar','sign','spin','coin','heart','item','ice']);
 function worldTransform(){
   if(vert){ctx.translate(0,H);ctx.rotate(-PI/2)}
   if(mirrorSX<.999){ctx.translate(VW/2,0);ctx.scale(mirrorSX,1);ctx.translate(-VW/2,0)}
@@ -1650,11 +1664,11 @@ function drawWorld(now,t){
         circle(px,py,lw*1.25,'#ffb627','#5a3d10',3);circle(px,py,lw*.45,'#5a3d10');
         if(Math.random()<.5)circle(x2+(Math.random()-.5)*6,y2+(Math.random()-.5)*6,lw*.4,'#fffbe0');
         if(e.center&&Math.random()<.5)circle(x1+(Math.random()-.5)*6,y1+(Math.random()-.5)*6,lw*.4,'#fffbe0');break}
-      case 'coin':if(!e.got){const x=SX(e.x),y=Y(e.y),r=playH*.026;ctx.save();ctx.translate(x,y);ctx.scale(Math.cos(t*3+e.x*5),1);starPath(r,r*.48);ctx.fillStyle='#ffd84a';ctx.fill();ctx.strokeStyle='#c98a12';ctx.lineWidth=2;ctx.stroke();ctx.restore()}break;
-      case 'heart':if(!e.got){const x=SX(e.x),y=Y(e.y),r=playH*.03*(1+.1*Math.sin(t*6));up(x,y,()=>{circle(0,0,r*1.6,'rgba(255,120,150,.25)');ctx.fillStyle='#ff4d6d';ctx.beginPath();ctx.moveTo(0,r*.9);ctx.bezierCurveTo(-r*1.6,-r*.2,-r*.6,-r*1.3,0,-r*.4);ctx.bezierCurveTo(r*.6,-r*1.3,r*1.6,-r*.2,0,r*.9);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke()})}break;
-      case 'item':if(!e.got){const it=ITEMS[e.kind],x=SX(e.x),y=Y(e.y),r=playH*.036*(1+.08*Math.sin(t*5+e.x));up(x,y,()=>{circle(0,0,r*1.55,it.col+'40');circle(0,0,r,it.col,'#fff',3);ctx.fillStyle='#fff';ctx.font='900 '+Math.round(r*1.25)+'px '+FONT;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(it.ch,0,r*.06)})}break;
+      case 'coin':if(oppView?e.x>cam-.02:!e.got){const x=SX(e.x),y=Y(e.y),r=playH*.026;ctx.save();ctx.translate(x,y);ctx.scale(Math.cos(t*3+e.x*5),1);starPath(r,r*.48);ctx.fillStyle='#ffd84a';ctx.fill();ctx.strokeStyle='#c98a12';ctx.lineWidth=2;ctx.stroke();ctx.restore()}break;
+      case 'heart':if(oppView?e.x>cam-.02:!e.got){const x=SX(e.x),y=Y(e.y),r=playH*.03*(1+.1*Math.sin(t*6));up(x,y,()=>{circle(0,0,r*1.6,'rgba(255,120,150,.25)');ctx.fillStyle='#ff4d6d';ctx.beginPath();ctx.moveTo(0,r*.9);ctx.bezierCurveTo(-r*1.6,-r*.2,-r*.6,-r*1.3,0,-r*.4);ctx.bezierCurveTo(r*.6,-r*1.3,r*1.6,-r*.2,0,r*.9);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke()})}break;
+      case 'item':if(oppView?e.x>cam-.02:!e.got){const it=ITEMS[e.kind],x=SX(e.x),y=Y(e.y),r=playH*.036*(1+.08*Math.sin(t*5+e.x));up(x,y,()=>{circle(0,0,r*1.55,it.col+'40');circle(0,0,r,it.col,'#fff',3);ctx.fillStyle='#fff';ctx.font='900 '+Math.round(r*1.25)+'px '+FONT;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(it.ch,0,r*.06)})}break;
       case 'ice':drawIce(e,now,t);break;
-      case 'bar':if(!e.dead){const x=SX(e.x)+(e.hitT&&now-e.hitT<400?Math.sin((now-e.hitT)*.08)*6:0),y=Y(e.y),r=e.r*playH;up(x,y,()=>BAR[e.kind](r,t,e.ph))}break;
+      case 'bar':if(oppView||!e.dead){const x=SX(e.x)+(e.hitT&&now-e.hitT<400?Math.sin((now-e.hitT)*.08)*6:0),y=Y(e.y),r=e.r*playH;up(x,y,()=>BAR[e.kind](r,t,e.ph))}break;
       case 'birds':if(e.st===1){for(let i=0;i<e.off.length;i++){if(e.dead[i])continue;const bx=SX(e.cx+e.off[i][0]),by=Y(e.y+e.off[i][1]+Math.sin(e.tt*3+i)*.01);
           up(bx,by,()=>{if(vert)ctx.rotate(0);const s=playH*.06,a=Math.sin(t*12+i)*.7;ctx.fillStyle=E.space?'#c9c9d6':'#5b4636';ell(0,0,s*.22,s*.14,ctx.fillStyle);circle(-s*.2,-s*.04,s*.1,ctx.fillStyle);poly([-s*.3,-s*.04,-s*.4,0,-s*.3,s*.02],'#ffb627');
             ctx.strokeStyle=E.space?'#c9c9d6':'#5b4636';ctx.lineWidth=s*.08;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(s*.15,-s*.35*a);ctx.stroke();circle(-s*.23,-s*.07,s*.025,'#fff')})}}break;
@@ -1767,7 +1781,8 @@ function drawPlane(now,t){
     ctx.save();ctx.translate(tipX,py);ctx.rotate(tilt);
     if(shocked){ctx.translate((Math.random()-.5)*4,(Math.random()-.5)*4)}
     // 機尾火焰：移動越大火越大，過熱時變紅
-    if(mode!=='over'||hearts>0){const fl=flameLvl,L=w*(.12+.34*fl)*(.85+Math.random()*.3),Rr=w*(.045+.035*fl),hot=clamp(heat-.8,0,1);
+    if(ohVis){for(let i=0;i<5;i++){const q=((now/700+i/5)%1);circle(-w*.5-q*w*.9,-w*.05-q*w*.25+Math.sin(now/200+i)*w*.04,w*(.06+q*.12),'rgba(30,30,32,'+(.75*(1-q)).toFixed(2)+')')}}
+    if(mode!=='over'||hearts>0){const bm=Math.max(1,boostMul),fl=Math.max(flameLvl,bm>1?.6:0),L=w*(.12+.34*fl)*(.85+Math.random()*.3)*(1+.55*(bm-1)),Rr=w*(.045+.035*fl)*(1+.18*(bm-1)),hot=clamp(heat-.8,0,1);
       ctx.save();ctx.translate(-w*.47,-w*.02);
       ell(-L*.48,0,L*.58,Rr*1.35,'rgba(255,'+Math.round(120-60*hot)+',40,.7)');ell(-L*.32,0,L*.4,Rr*.95,'rgba(255,'+Math.round(205-80*hot)+',70,.9)');ell(-L*.16,0,L*.2,Rr*.5,'rgba(255,255,225,.95)');
       ctx.restore()}
@@ -1855,7 +1870,7 @@ let wakeLock=null;
 function keepAwake(){try{navigator.wakeLock&&navigator.wakeLock.request('screen').then(l=>wakeLock=l).catch(()=>{})}catch(e){}}
 function showOnly(id){['#menu','#levels','#calib','#pause','#result','#mp','#mpResult','#login','#rank','#about'].forEach(s=>$(s).hidden=s!==id)}
 function resetRun(){
-  cam=0;touches=0;coins=0;elapsed=0;invUntil=0;shockUntil=0;shieldUntil=0;tilt=0;gunUntil=0;magnetUntil=0;shrinkUntil=0;slowUntil=0;bullets=[];hs=1;heat=0;flameLvl=0;revOn=false;exitOff=0;tyEff=.5;zoneRev=false;thr=S.advance==='manual'?0:1;fwdHeld=false;stopHeld=false;fwdKeys.clear();stopKeys.clear();powCache='';for(const k in PW)PW[k]=0;mirrorSX=1;chaosLvl=0;bfogLvl=0;tempLvl=0;wideLvl=0;bombRing=0;laserT=0;$('#powers').innerHTML='';burnt.clear();parts=[];arcs=[];hudCache='';probeY=.5;
+  cam=0;touches=0;coins=0;elapsed=0;invUntil=0;shockUntil=0;shieldUntil=0;tilt=0;gunUntil=0;magnetUntil=0;shrinkUntil=0;slowUntil=0;bullets=[];hs=1;heat=0;flameLvl=0;revOn=false;exitOff=0;tyEff=.5;zoneRev=false;thr=S.advance==='manual'?0:1;boostHold=0;boostMul=1;coolUntil=0;ohVis=false;fwdHeld=false;stopHeld=false;fwdKeys.clear();stopKeys.clear();powCache='';for(const k in PW)PW[k]=0;mirrorSX=1;chaosLvl=0;bfogLvl=0;tempLvl=0;wideLvl=0;bombRing=0;laserT=0;$('#powers').innerHTML='';burnt.clear();parts=[];arcs=[];hudCache='';probeY=.5;
   windOff=0;fogLvl=0;frozen=false;loopAng=0;spdNow=1;sandLvl=0;stormT=3+Math.random()*3;$('#iceMeter').hidden=true;
 }
 function startLevel(n){
@@ -2233,7 +2248,6 @@ function RoomHub(send){
   function checkEnd(r){
     const a=list(r),act=a.filter(p=>!p.res).length,fin=a.filter(p=>p.res&&p.res.fin).length;
     if(act===0)closeMatch(r,fin?'finish':'out');
-    else if(fin>0&&act<=1)closeMatch(r,'finish');
   }
   const mkRes=d=>({fin:!!d.fin,prog:Math.max(0,Math.min(1,+d.prog||0)),touches:+d.touches||0,coins:+d.coins||0,time:+d.time||0});
   function done(r,p,d){
@@ -2244,7 +2258,7 @@ function RoomHub(send){
     if(r.state!=='playing'||p.res)return;
     p.res=mkRes(d);
     if(p.res.fin){p.finOrder=++r.finN;toRoom(r,'rank',{id:p.id,rank:p.finOrder});
-      if(r.finN===1&&list(r).length>2){r.endT=setTimeout(()=>closeMatch(r,'finish'),END_WAIT);toRoom(r,'endIn',{ms:END_WAIT})}}
+      if(r.finN===1&&list(r).some(x=>!x.res)){r.endT=setTimeout(()=>closeMatch(r,'finish'),END_WAIT);toRoom(r,'endIn',{ms:END_WAIT})}}
     else toRoom(r,'rank',{id:p.id,out:true,prog:p.res.prog});
     checkEnd(r);
   }
@@ -2479,8 +2493,10 @@ function onRank(d){
 }
 
 /* ---- 電腦玩家（由房主的裝置負責模擬） ---- */
-const AIP={easy:{spd:.9,k:3.5,amp:.85,hz:.05,coin:.45,look:.03},normal:{spd:1.06,k:6.5,amp:.5,hz:.022,coin:.65,look:.05},hard:{spd:1.24,k:10,amp:.32,hz:.012,coin:.85,look:.08}};
-function aiNew(id,o){return {id,lvl:o.lvl||'normal',name:o.name,plane:o.plane,c:0,y:cAt(0),vy:0,tilt:0,h:course.L.lives,mh:course.L.lives,inv:0,sh:0,touches:0,k:0,done:false,fin:false,ph:Math.random()*100,thr:1,el:0}}
+const AIP={easy:{spd:.9,k:3.5,amp:.85,hz:.05,coin:.45,look:.03,on:[1,5],off:[5,10]},normal:{spd:1,k:6.5,amp:.5,hz:.022,coin:.65,look:.05,on:[3,13],off:[3,7]},hard:{spd:1.04,k:10,amp:.32,hz:.012,coin:.85,look:.08,on:[6,24],off:[1.5,4]}};
+const rr=(a)=>a[0]+Math.random()*(a[1]-a[0]);
+function aiNew(id,o){const P=AIP[o.lvl]||AIP.normal;return {id,lvl:o.lvl||'normal',name:o.name,plane:o.plane,c:0,y:cAt(0),vy:0,tilt:0,h:course.L.lives,mh:course.L.lives,inv:0,sh:0,touches:0,k:0,done:false,fin:false,ph:Math.random()*100,thr:1,el:0,
+  bon:false,bh:0,bt:rr(P.off)*.5,cool:0,bm:1}}
 function aiHit(a,now){
   if(now<a.inv)return;a.h--;a.touches++;a.inv=now+1400;a.sh=now+1300;
   if(a.h<=0){a.done=true;MP.sock.emit('done',{ai:a.id,fin:false,prog:clamp(a.c/course.len,0,1),touches:a.touches,coins:a.k,time:a.el})}
@@ -2488,10 +2504,15 @@ function aiHit(a,now){
 function aiStep(a,dt,now){
   if(a.done)return;
   const P=AIP[a.lvl]||AIP.normal,t=now/1000;
-  a.thr+=(P.spd*(.92+.16*Math.sin(t*.37+a.ph))-a.thr)*Math.min(1,dt);
+  // 加速：按一陣子、放一陣子；按太久會過熱
+  a.bt-=dt;if(a.bt<=0){a.bon=!a.bon;a.bt=rr(a.bon?P.on:P.off)}
+  const cool=now<a.cool;
+  if(a.bon&&!cool){a.bh+=dt;if(a.bh>=BOOST_MAX_HOLD){a.bh=0;a.cool=now+COOL_MS;a.bon=false;a.bt=rr(P.off)}}else a.bh=0;
+  a.bm=a.bon&&!cool?ladder(a.bh,false):1;
+  a.thr+=(P.spd*a.bm*(.95+.1*Math.sin(t*.37+a.ph))-a.thr)*Math.min(1,2.5*dt);
   const sp=course.L.speed*look(course.s,a.c)*a.thr;a.c+=sp*dt;a.el+=dt;
-  const ax=a.c+P.look,c=cAt(ax),g=gAt(ax),margin=Math.max(0,g/2-HIT_H-.006);
-  let target=c+margin*P.amp*(.62*Math.sin(t*1.45+a.ph)+.38*Math.sin(t*3.3+a.ph*2));
+  const ax=a.c+P.look*Math.max(1,a.thr*.8),c=cAt(ax),g=gAt(ax),margin=Math.max(0,g/2-HIT_H-.006),amp=Math.min(1,P.amp*(1+.12*(a.thr-1)));
+  let target=c+margin*amp*(.62*Math.sin(t*1.45+a.ph)+.38*Math.sin(t*3.3+a.ph*2));
   for(const e of course.ev){if(e.x>a.c+.45)break;
     if(e.t==='bar'&&e.x>a.c-.05){const need=e.r+HIT_H+.02;if(Math.abs(target-e.y)<need)target=e.y+(target>=e.y?need:-need)}}
   target=clamp(target,c-margin,c+margin);
@@ -2500,12 +2521,12 @@ function aiStep(a,dt,now){
   const cc=cAt(a.c),gg=gAt(a.c),lim=gg/2-HIT_H;
   if(Math.abs(a.y-cc)>lim){aiHit(a,now);a.y=cc+Math.sign(a.y-cc)*Math.max(0,lim-.02)}
   for(const e of course.ev){if(e.x>a.c+HIT_W)break;if(e.t==='bar'&&Math.abs(e.x-a.c)<HIT_W&&Math.abs(e.y-a.y)<e.r+HIT_H)aiHit(a,now)}
-  if(Math.random()<P.hz*DIFFS[diffKey()].haz*dt)aiHit(a,now);   // 模擬被飛彈、旋轉棒等打到
+  if(Math.random()<P.hz*DIFFS[diffKey()].haz*Math.max(1,a.thr*.7)*dt)aiHit(a,now);   // 模擬被飛彈、旋轉棒等打到
   a.k=Math.round((course.coinsTotal||0)*clamp(a.c/course.len,0,1)*P.coin);
   if(!a.done&&a.c>=course.len){a.done=true;a.fin=true;a.c=course.len;MP.sock.emit('done',{ai:a.id,fin:true,prog:1,touches:a.touches,coins:a.k,time:a.el})}
 }
 function aiState(a,now){return {c:+a.c.toFixed(3),y:+a.y.toFixed(3),t:+a.tilt.toFixed(2),h:Math.max(0,a.h),mh:a.mh,k:a.k,sh:now<a.sh?1:0,f:0,hs:1,fl:+clamp(Math.abs(a.vy)*2,0,1).toFixed(2),p:a.plane,
-  d:a.h<=0?1:0,md:a.done?'over':(MP.goAt&&now>=MP.goAt?'play':'count'),w:0,sd:0,sp:a.done||!(MP.goAt&&now>=MP.goAt)?0:+(look(course.s,a.c)*a.thr).toFixed(2),len:+course.len.toFixed(2)}}
+  d:a.h<=0?1:0,md:a.done?'over':(MP.goAt&&now>=MP.goAt?'play':'count'),w:0,sd:0,sp:a.done||!(MP.goAt&&now>=MP.goAt)?0:+(look(course.s,a.c)*a.thr).toFixed(2),len:+course.len.toFixed(2),bm:a.bm,oh:now<a.cool?1:0,pw:''}}
 
 function mpTick(now){
   const dt=clamp((now-(MP.lastTick||now))/1000,0,.1);MP.lastTick=now;
@@ -2515,7 +2536,8 @@ function mpTick(now){
     MP.lastSend=now;
     MP.sock.emit('st',{c:+cam.toFixed(3),y:+probeY.toFixed(3),t:+tilt.toFixed(2),h:hearts,mh:maxHearts,k:coins,sh:now<shockUntil?1:0,f:frozen?1:0,
       hs:+hs.toFixed(2),fl:+flameLvl.toFixed(2),p:S.plane,d:(mode==='over'&&hearts<=0)?1:0,md:mode,w:+wideLvl.toFixed(2),sd:now<shieldUntil?1:0,
-      sp:mode==='play'?+(spdNow*(now<slowUntil?.55:1)*(now<PW.dash?1.6:1)*thr).toFixed(2):0,len:+course.len.toFixed(2)});
+      sp:mode==='play'?+(spdNow*(now<slowUntil?.55:1)*(now<PW.dash?1.6:1)*thr).toFixed(2):0,len:+course.len.toFixed(2),bm:boostMul,oh:ohVis?1:0,
+      pw:Object.keys(ITEMS).filter(k=>untilOf(k)>now).map(k=>ITEMS[k].ch).join('')});
     if(MP.ai)for(const a of MP.ai){const o=MP.others.get(a.id);if(o&&o.s)MP.sock.emit('st',{ai:a.id,s:o.s})}
   }
 }
@@ -2685,6 +2707,9 @@ function paneLabels(o,r){
   const label=o.name+(hearts?' '+hearts:'');
   if(vert){ctx.font='900 '+fs+'px '+FONT;const lw=ctx.measureText(label).width+fs*1.1;const f2=lw>r.w-6?Math.max(9,fs*(r.w-6)/lw):fs;pill(r.w/2,r.h-f2-2,label,f2,'rgba(0,0,0,.62)','#fff','center')}
   else pill(6,r.h-fs-3,label,fs,'rgba(0,0,0,.62)','#fff','left');
+  if(s&&s.pw){let x=r.w-4;const f=small?11:13;for(const ch of [...s.pw].reverse()){const it=Object.values(ITEMS).find(v=>v.ch===ch);ctx.font='900 '+f+'px '+FONT;const pw=f*1.7;x-=pw;
+    ctx.fillStyle=it?it.col:'#555';ctx.beginPath();ctx.arc(x+pw/2,10+f*.8,f*.85,0,TAU);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(ch,x+pw/2,10+f*.8+1);x-=2}}
+  if(s&&s.md==='play'&&(s.bm>1||s.oh)){const f=small?10:12;pill(vert?r.w/2:r.w*.5,r.h-f-4-(vert?f*2.2:0),s.oh?'過熱':'加速 ×'+s.bm,f,s.oh?'rgba(60,60,60,.85)':'rgba(255,120,30,.9)','#fff','center')}
   const big=Math.max(13,Math.min(22,Math.min(r.w,r.h)*.16));
   if(o.rank)badge(r.w/2,r.h*.45,'第 '+o.rank+' 名',big);
   else if(o.out||(s&&s.d))badge(r.w/2,r.h*.45,'出局',big);
@@ -2693,7 +2718,7 @@ function paneLabels(o,r){
 function drawPane(o,r,now){
   const t=now/1000,s=o.s;
   if(!s){ctx.fillStyle='#0b111b';ctx.fillRect(0,0,r.w,r.h);return}
-  const keep={W,H,VW,VH,playTop,playH,tipX,AHEAD,AS,spriteSz,cam,probeY,tilt,hs,flameLvl,heat,frozen,spdNow,loopAng,mirrorSX,shockUntil,invUntil,shieldUntil,magnetUntil,
+  const keep={boostMul,ohVis,W,H,VW,VH,playTop,playH,tipX,AHEAD,AS,spriteSz,cam,probeY,tilt,hs,flameLvl,heat,frozen,spdNow,loopAng,mirrorSX,shockUntil,invUntil,shieldUntil,magnetUntil,
     wideLvl,parts,arcs,bullets,plane:S.plane,mode,hearts,muzzleT,windNow,fogLvl,bfogLvl,tempLvl,sandLvl,revOn,bombRing,warnLvl,touching,pw:Object.assign({},PW)};
   try{
     W=r.w;H=r.h;
@@ -2701,7 +2726,7 @@ function drawPane(o,r,now){
     else{VW=H;VH=W;playH=Math.max(36,Math.min(W-6,H*.62));playTop=(W-playH)/2;tipX=Math.round(Math.max(H*.24,PLANE_W*playH*.5+8))}
     AHEAD=(VW-tipX)/playH;AS=Math.max(10,Math.round(playH*.1));spriteSz=Math.ceil(AS*1.6);
     const ext=s.md==='play'?Math.min(.5,(clock-o.t)/1000)*course.L.speed*(s.sp||0):0;
-    cam=Math.min(s.c+ext,s.len||course.len);probeY=s.y;tilt=s.t||0;hs=s.hs||1;flameLvl=s.fl||0;heat=0;frozen=!!s.f;spdNow=s.sp||1;loopAng=0;mirrorSX=1;
+    boostMul=s.bm||1;ohVis=!!s.oh;cam=Math.min(s.c+ext,s.len||course.len);probeY=s.y;tilt=s.t||0;hs=s.hs||1;flameLvl=s.fl||0;heat=0;frozen=!!s.f;spdNow=s.sp||1;loopAng=0;mirrorSX=1;
     shockUntil=s.sh||s.d?clock+200:0;invUntil=0;shieldUntil=s.sd?clock+1000:0;magnetUntil=0;wideLvl=s.w||0;parts=[];arcs=[];bullets=[];
     S.plane=s.p||o.plane;mode=s.d?'over':'play';hearts=s.h;muzzleT=0;windNow=0;fogLvl=0;bfogLvl=0;tempLvl=0;sandLvl=0;revOn=false;bombRing=0;warnLvl=0;touching=false;for(const k in PW)PW[k]=0;
     oppView=true;
@@ -2709,7 +2734,7 @@ function drawPane(o,r,now){
     ctx.fillStyle='rgba(0,0,0,.12)';ctx.fillRect(0,0,W,H);
   }finally{
     oppView=false;
-    ({W,H,VW,VH,playTop,playH,tipX,AHEAD,AS,spriteSz,cam,probeY,tilt,hs,flameLvl,heat,frozen,spdNow,loopAng,mirrorSX,shockUntil,invUntil,shieldUntil,magnetUntil,
+    ({boostMul,ohVis,W,H,VW,VH,playTop,playH,tipX,AHEAD,AS,spriteSz,cam,probeY,tilt,hs,flameLvl,heat,frozen,spdNow,loopAng,mirrorSX,shockUntil,invUntil,shieldUntil,magnetUntil,
       wideLvl,parts,arcs,bullets,mode,hearts,muzzleT,windNow,fogLvl,bfogLvl,tempLvl,sandLvl,revOn,bombRing,warnLvl,touching}=keep);
     S.plane=keep.plane;Object.assign(PW,keep.pw);
   }

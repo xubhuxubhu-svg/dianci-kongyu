@@ -143,7 +143,6 @@ function RoomHub(send){
   function checkEnd(r){
     const a=list(r),act=a.filter(p=>!p.res).length,fin=a.filter(p=>p.res&&p.res.fin).length;
     if(act===0)closeMatch(r,fin?'finish':'out');
-    else if(fin>0&&act<=1)closeMatch(r,'finish');
   }
   const mkRes=d=>({fin:!!d.fin,prog:Math.max(0,Math.min(1,+d.prog||0)),touches:+d.touches||0,coins:+d.coins||0,time:+d.time||0});
   function done(r,p,d){
@@ -154,7 +153,7 @@ function RoomHub(send){
     if(r.state!=='playing'||p.res)return;
     p.res=mkRes(d);
     if(p.res.fin){p.finOrder=++r.finN;toRoom(r,'rank',{id:p.id,rank:p.finOrder});
-      if(r.finN===1&&list(r).length>2){r.endT=setTimeout(()=>closeMatch(r,'finish'),END_WAIT);toRoom(r,'endIn',{ms:END_WAIT})}}
+      if(r.finN===1&&list(r).some(x=>!x.res)){r.endT=setTimeout(()=>closeMatch(r,'finish'),END_WAIT);toRoom(r,'endIn',{ms:END_WAIT})}}
     else toRoom(r,'rank',{id:p.id,out:true,prog:p.res.prog});
     checkEnd(r);
   }
