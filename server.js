@@ -76,6 +76,30 @@ app.post('/api/save', async (req, res) => {
     await pool.query('update dk_players set data=$1, updated_at=now() where id=$2', [cleanData(req.body.data), p.id]); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ err: '存檔失敗' }); }
 });
+// 排行榜：不帶關卡是總排行（星星總數→過關數→收集星星），帶 level 是該關最快通關時間
+app.get('/api/rank', async (req, res) => {
+  if (needDb(res)) return;
+  try {
+    const me = await who(req);
+    const r = await pool.query('select name,data from dk_players order by updated_at desc limit 5000');
+    const lv = parseInt(req.query.level, 10);
+    let rows;
+    if (lv >= 1 && lv <= 30) {
+      rows = r.rows.map(x => { const b = x.data && x.data.best && x.data.best[lv]; return b && +b.t > 0 ? { name: x.name, t: +b.t, c: +b.c || 0, d: b.d || '', s: +((x.data.stars || {})[lv]) || 0 } : null; })
+        .filter(Boolean).sort((a, b) => a.t - b.t);
+    } else {
+      rows = r.rows.map(x => {
+        const st = (x.data && x.data.stars) || {}, bb = (x.data && x.data.best) || {}; let s = 0, n = 0, c = 0;
+        for (const k in st) { const v = +st[k] || 0; if (v > 0) { s += v; n++; } }
+        for (const k in bb) c += +bb[k].c || 0;
+        return { name: x.name, s, n, c };
+      }).filter(x => x.n > 0).sort((a, b) => b.s - a.s || b.n - a.n || b.c - a.c);
+    }
+    const i = me ? rows.findIndex(x => x.name === me.name) : -1;
+    res.json({ rows: rows.slice(0, 50), me: i >= 0 ? Object.assign({ rank: i + 1 }, rows[i]) : null, total: rows.length });
+  } catch (e) { console.error(e.message); res.status(500).json({ err: '讀取排行榜失敗' }); }
+});
+
 app.post('/api/logout', async (req, res) => {
   if (needDb(res)) return;
   try { await pool.query('delete from dk_sessions where token=$1', [String(req.headers['x-token'] || '')]); } catch (e) {}
@@ -85,173 +109,155 @@ app.post('/api/logout', async (req, res) => {
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' }, maxHttpBufferSize: 1e6 });
 
-const MAX_PLAYERS = 2;
-const rooms = new Map(); // 房號 -> 房間
-
-function newCode() {
-  for (let i = 0; i < 200; i++) {
-    const c = String(Math.floor(1000 + Math.random() * 9000));
-    if (!rooms.has(c)) return c;
+// ==ROOMHUB-BEGIN==
+/* ===== 房間邏輯（伺服器與單機電腦對戰共用）===== */
+function RoomHub(send){
+  // send(玩家id, 事件, 資料, 可丟棄)
+  const rooms=new Map(),where=new Map(),MAXP=4,END_WAIT=40000;
+  const clean=(s,n)=>String(s==null?'':s).replace(/[<>]/g,'').trim().slice(0,n);
+  const LVN={easy:'簡單',normal:'普通',hard:'困難'};
+  const PL=['pink_cat','blue_cat','camo_bear','green_cat','yellow_dog'];
+  const list=r=>[...r.players.values()];
+  const humans=r=>list(r).filter(p=>!p.ai);
+  const toRoom=(r,ev,d,except,vol)=>{for(const p of humans(r))if(p.id!==except)send(p.id,ev,d,vol)};
+  function newCode(){for(let i=0;i<300;i++){const c=String(Math.floor(1000+Math.random()*9000));if(!rooms.has(c))return c}return String(Date.now()).slice(-6)}
+  function view(r){return {code:r.code,host:r.host,level:r.level,diff:r.diff,state:r.state,
+    players:list(r).map(p=>({id:p.id,name:p.name,plane:p.plane,lr:p.lr,voice:!!p.voice,ai:!!p.ai,lvl:p.lvl||''}))}}
+  const sendRoom=r=>toRoom(r,'room',view(r));
+  const sys=(r,text)=>toRoom(r,'chat',{name:'系統',text,sys:true,t:Date.now()});
+  function rankAll(r){
+    const a=list(r);
+    a.sort((x,y)=>{const fx=x.res&&x.res.fin,fy=y.res&&y.res.fin;
+      if(fx&&fy)return x.finOrder-y.finOrder;if(fx)return -1;if(fy)return 1;
+      return ((y.res&&y.res.prog)||0)-((x.res&&x.res.prog)||0)||((x.res&&+x.res.touches)||0)-((y.res&&+y.res.touches)||0)});
+    a.forEach((p,i)=>p.rank=i+1);return a;
   }
-  return String(Date.now()).slice(-6);
-}
-function roomView(r) {
-  return {
-    code: r.code, host: r.host, level: r.level, diff: r.diff, state: r.state,
-    players: [...r.players.values()].map(p => ({ id: p.id, name: p.name, plane: p.plane, lr: p.lr, voice: p.voice }))
-  };
-}
-function sendRoom(r) { io.to(r.code).emit('room', roomView(r)); }
-function sysMsg(r, text) { io.to(r.code).emit('chat', { name: '系統', text, sys: true, t: Date.now() }); }
-
-function leaveRoom(sock) {
-  const code = sock.data.room;
-  if (!code) return;
-  const r = rooms.get(code);
-  sock.leave(code);
-  sock.data.room = null;
-  if (!r) return;
-  const p = r.players.get(sock.id);
-  r.players.delete(sock.id);
-  if (r.players.size === 0) { rooms.delete(code); return; }
-  if (r.host === sock.id) r.host = [...r.players.keys()][0];
-  io.to(code).emit('left', { id: sock.id, name: p ? p.name : '' });
-  if (r.state !== 'lobby') {
-    // 對戰中有人離開：剩下的人直接獲勝
-    const winner = [...r.players.keys()][0];
-    io.to(code).emit('result', { winner, reason: 'left', players: [...r.players.values()].map(x => ({ id: x.id, name: x.name, res: x.res || null })) });
-    r.state = 'lobby';
+  function resView(r){const a=rankAll(r);
+    return {reason:r.reason,winner:a[0]?a[0].id:null,players:a.map(p=>({id:p.id,name:p.name,plane:p.plane,ai:!!p.ai,res:p.res||null,rank:p.rank,rm:!!p.rm}))}}
+  function closeMatch(r,reason){
+    if(r.state!=='playing')return;
+    clearTimeout(r.endT);r.state='result';r.reason=reason;r.pend=null;r.resultAt=Date.now();
+    for(const p of list(r)){if(!p.res)p.res={fin:false,prog:p.lastProg||0,touches:'',coins:'',live:true};p.rm=!!p.ai}
+    toRoom(r,'result',resView(r));
   }
-  for (const x of r.players.values()) { x.lr = false; x.ready = false; x.res = null; }
-  if (p) sysMsg(r, p.name + ' 離開了房間');
-  sendRoom(r);
+  function checkEnd(r){
+    const a=list(r),act=a.filter(p=>!p.res).length,fin=a.filter(p=>p.res&&p.res.fin).length;
+    if(act===0)closeMatch(r,fin?'finish':'out');
+    else if(fin>0&&act<=1)closeMatch(r,'finish');
+  }
+  const mkRes=d=>({fin:!!d.fin,prog:Math.max(0,Math.min(1,+d.prog||0)),touches:+d.touches||0,coins:+d.coins||0,time:+d.time||0});
+  function done(r,p,d){
+    if(r.state==='result'){ // 結算後才送到（幾乎同時抵達）：補上成績
+      if(p.res&&p.res.live&&Date.now()-r.resultAt<15000){p.res=mkRes(d);if(p.res.fin)p.finOrder=++r.finN;toRoom(r,'result',resView(r))}
+      return;
+    }
+    if(r.state!=='playing'||p.res)return;
+    p.res=mkRes(d);
+    if(p.res.fin){p.finOrder=++r.finN;toRoom(r,'rank',{id:p.id,rank:p.finOrder});
+      if(r.finN===1&&list(r).length>2){r.endT=setTimeout(()=>closeMatch(r,'finish'),END_WAIT);toRoom(r,'endIn',{ms:END_WAIT})}}
+    else toRoom(r,'rank',{id:p.id,out:true,prog:p.res.prog});
+    checkEnd(r);
+  }
+  function aiName(r,lvl){let n=1;const used=new Set(list(r).map(p=>p.name));while(used.has('電腦'+n+'・'+LVN[lvl]))n++;return '電腦'+n+'・'+LVN[lvl]}
+  function aiPlane(r){const used=new Set(list(r).map(p=>p.plane));const free=PL.filter(x=>!used.has(x));const a=free.length?free:PL;return a[Math.floor(Math.random()*a.length)]}
+  function leave(id){
+    const code=where.get(id);if(!code)return;where.delete(id);
+    const r=rooms.get(code);if(!r)return;
+    const p=r.players.get(id);r.players.delete(id);
+    if(!humans(r).length){clearTimeout(r.endT);rooms.delete(code);return}
+    const wasHost=r.host===id;if(wasHost)r.host=humans(r)[0].id;
+    toRoom(r,'left',{id,name:p?p.name:''});
+    if(p)sys(r,p.name+' 離開了房間');
+    if(r.state==='playing'){
+      if(wasHost)for(const x of list(r))if(x.ai&&!x.res){x.res={fin:false,prog:x.lastProg||0,touches:'',coins:''};toRoom(r,'rank',{id:x.id,out:true,prog:x.res.prog})}
+      checkEnd(r);
+    }else if(r.state==='starting'){
+      r.state='lobby';for(const x of humans(r)){x.lr=false;x.ready=false}
+      toRoom(r,'abort',{name:p?p.name:''});
+    }else if(r.state==='result'){toRoom(r,'rematchState',{ids:humans(r).filter(x=>x.rm).map(x=>x.id),pend:r.pend})}
+    if(r.state==='lobby')for(const x of humans(r))x.lr=false;
+    sendRoom(r);
+  }
+  function startMatch(r,again){
+    r.state='starting';r.finN=0;clearTimeout(r.endT);
+    for(const x of list(r)){x.ready=!!x.ai;x.res=null;x.rm=false;x.finOrder=0;x.lastProg=0;x.rank=0}
+    toRoom(r,'start',{level:r.level,diff:r.diff,again:!!again,ids:list(r).map(p=>p.id)});
+    sendRoom(r);
+  }
+  function handle(id,ev,d){
+    d=d&&typeof d==='object'?d:{};
+    const r=rooms.get(where.get(id)),p=r&&r.players.get(id);
+    switch(ev){
+    case 'create':{
+      leave(id);const code=newCode();
+      const nr={code,host:id,level:1,diff:'normal',state:'lobby',players:new Map(),finN:0};rooms.set(code,nr);
+      nr.players.set(id,{id,name:clean(d.name,12)||'玩家',plane:clean(d.plane,20),lr:false,ready:false,voice:false,res:null});
+      where.set(id,code);sendRoom(nr);sys(nr,d.local?'電腦對戰房間已建立，可以加入 1～3 位電腦玩家':'房間已建立，房號 '+code);return}
+    case 'join':{
+      const code=clean(d.code,6),jr=rooms.get(code);
+      if(!jr)return send(id,'err','找不到房號 '+code+'，請確認號碼');
+      if(jr.players.size>=MAXP)return send(id,'err','這個房間已經滿了（最多 4 人）');
+      if(jr.state!=='lobby')return send(id,'err','這個房間正在對戰中，請稍後再加入');
+      leave(id);const name=clean(d.name,12)||'玩家';
+      jr.players.set(id,{id,name,plane:clean(d.plane,20),lr:false,ready:false,voice:false,res:null});
+      where.set(id,code);sendRoom(jr);sys(jr,name+' 加入了房間');return}
+    case 'leave':return leave(id);
+    }
+    if(!r||!p)return;
+    switch(ev){
+    case 'cfg':{
+      if(r.host!==id||r.state!=='lobby')return;
+      r.level=Math.max(1,Math.min(30,parseInt(d.level,10)||1));
+      r.diff=['normal','medium','hard','hell'].includes(d.diff)?d.diff:'normal';sendRoom(r);return}
+    case 'addAi':{
+      if(r.host!==id||r.state!=='lobby')return;
+      if(r.players.size>=MAXP)return send(id,'err','房間已經滿了（最多 4 人）');
+      const lvl=LVN[d.lvl]?d.lvl:'normal',aid='ai'+Math.random().toString(36).slice(2,8);
+      r.players.set(aid,{id:aid,ai:true,lvl,name:aiName(r,lvl),plane:aiPlane(r),lr:true,ready:true,res:null});
+      sendRoom(r);return}
+    case 'delAi':{
+      if(r.host!==id||r.state!=='lobby')return;const a=r.players.get(d.id);if(a&&a.ai)r.players.delete(d.id);sendRoom(r);return}
+    case 'me':
+      if(d.plane!=null)p.plane=clean(d.plane,20);if(d.lr!=null)p.lr=!!d.lr;if(d.voice!=null)p.voice=!!d.voice;sendRoom(r);return;
+    case 'chat':{const text=clean(d.text,80);if(text)toRoom(r,'chat',{id,name:p.name,text,t:Date.now()});return}
+    case 'start':
+      if(r.host!==id||r.state!=='lobby')return;
+      if(r.players.size<2)return send(id,'err','至少要 2 位玩家（可以加入電腦玩家）');
+      if(humans(r).some(x=>!x.lr))return send(id,'err','還有玩家沒按「我準備好了」');
+      return startMatch(r,false);
+    case 'ready':
+      if(r.state!=='starting')return;p.ready=true;
+      if(list(r).every(x=>x.ready)){r.state='playing';toRoom(r,'go',{t:Date.now()})}else toRoom(r,'waiting',{id});return;
+    case 'st':{
+      let who=p;if(d.ai){const a=r.players.get(d.ai);if(!a||!a.ai||r.host!==id)return;who=a}
+      const s=d.s||d;if(s&&+s.len>0)who.lastProg=Math.max(0,Math.min(1,(+s.c||0)/+s.len));
+      toRoom(r,'st',{id:who.id,s},id,true);return}
+    case 'done':{
+      let who=p;if(d.ai){const a=r.players.get(d.ai);if(!a||!a.ai||r.host!==id)return;who=a}
+      return done(r,who,d)}
+    case 'rematch':{  // 再來一局（同一關）或下一關：大家都同意同一個選擇就開始
+      if(r.state!=='result')return;
+      const want=d.next&&r.level<30?'next':'same';
+      if(r.pend!==want){r.pend=want;for(const x of humans(r))x.rm=false}
+      p.rm=true;
+      if(list(r).length>=2&&list(r).every(x=>x.rm)){if(r.pend==='next')r.level=Math.min(30,r.level+1);r.pend=null;startMatch(r,true)}
+      else toRoom(r,'rematchState',{ids:humans(r).filter(x=>x.rm).map(x=>x.id),pend:r.pend,by:p.name});
+      return}
+    case 'back':
+      if(r.state==='result'){r.state='lobby';for(const x of humans(r)){x.lr=false;x.ready=false;x.res=null;x.rm=false}}
+      sendRoom(r);return;
+    case 'rtc':if(d.to&&r.players.has(d.to))send(d.to,'rtc',{from:id,data:d.data});return;
+    case 'rtc-renew':toRoom(r,'rtc-renew',{from:id},id);return;
+    }
+  }
+  return {handle,leave,rooms};
 }
-
-function finishMatch(r, winner, reason) {
-  if (r.state !== 'playing' && r.state !== 'starting') return;
-  r.state = 'result';
-  io.to(r.code).emit('result', {
-    winner, reason,
-    players: [...r.players.values()].map(x => ({ id: x.id, name: x.name, plane: x.plane, res: x.res || null }))
-  });
-}
-
+// ==ROOMHUB-END==
+const hub = RoomHub((id, ev, data, vol) => (vol ? io.volatile : io).to(id).emit(ev, data));
+const EVENTS = new Set(['create','join','leave','cfg','addAi','delAi','me','chat','start','ready','st','done','rematch','back','rtc','rtc-renew']);
 io.on('connection', (sock) => {
-  sock.data.room = null;
-
-  sock.on('create', (d = {}) => {
-    leaveRoom(sock);
-    const code = newCode();
-    const r = { code, host: sock.id, level: 1, diff: 'normal', state: 'lobby', players: new Map() };
-    rooms.set(code, r);
-    r.players.set(sock.id, { id: sock.id, name: clean(d.name, 12) || '玩家', plane: clean(d.plane, 20), lr: false, ready: false, voice: false, res: null });
-    sock.join(code); sock.data.room = code;
-    sendRoom(r);
-    sysMsg(r, '房間已建立，房號 ' + code);
-  });
-
-  sock.on('join', (d = {}) => {
-    const code = clean(d.code, 6);
-    const r = rooms.get(code);
-    if (!r) return sock.emit('err', '找不到房號 ' + code + '，請確認號碼');
-    if (r.players.size >= MAX_PLAYERS) return sock.emit('err', '這個房間已經滿了');
-    if (r.state !== 'lobby') return sock.emit('err', '這個房間正在對戰中，請稍後再加入');
-    leaveRoom(sock);
-    const name = clean(d.name, 12) || '玩家';
-    r.players.set(sock.id, { id: sock.id, name, plane: clean(d.plane, 20), lr: false, ready: false, voice: false, res: null });
-    sock.join(code); sock.data.room = code;
-    sendRoom(r);
-    sysMsg(r, name + ' 加入了房間');
-  });
-
-  sock.on('leave', () => leaveRoom(sock));
-
-  sock.on('cfg', (d = {}) => {
-    const r = rooms.get(sock.data.room);
-    if (!r || r.host !== sock.id || r.state !== 'lobby') return;
-    const lv = Math.max(1, Math.min(30, parseInt(d.level, 10) || 1));
-    const df = ['normal', 'medium', 'hard', 'hell'].includes(d.diff) ? d.diff : 'normal';
-    r.level = lv; r.diff = df;
-    sendRoom(r);
-  });
-
-  sock.on('me', (d = {}) => {
-    const r = rooms.get(sock.data.room); if (!r) return;
-    const p = r.players.get(sock.id); if (!p) return;
-    if (d.plane != null) p.plane = clean(d.plane, 20);
-    if (d.lr != null) p.lr = !!d.lr;
-    if (d.voice != null) p.voice = !!d.voice;
-    sendRoom(r);
-  });
-
-  sock.on('chat', (d = {}) => {
-    const r = rooms.get(sock.data.room); if (!r) return;
-    const p = r.players.get(sock.id); if (!p) return;
-    const text = clean(d.text, 80); if (!text) return;
-    io.to(r.code).emit('chat', { id: sock.id, name: p.name, text, t: Date.now() });
-  });
-
-  sock.on('start', () => {
-    const r = rooms.get(sock.data.room);
-    if (!r || r.host !== sock.id || r.state !== 'lobby') return;
-    if (r.players.size < 2) return sock.emit('err', '要等對手加入才能開始');
-    if ([...r.players.values()].some(p => !p.lr)) return sock.emit('err', '還有玩家沒按「我準備好了」');
-    r.state = 'starting';
-    for (const p of r.players.values()) { p.ready = false; p.res = null; }
-    io.to(r.code).emit('start', { level: r.level, diff: r.diff });
-    sendRoom(r);
-  });
-
-  // 校準完成，按下「開始」
-  sock.on('ready', () => {
-    const r = rooms.get(sock.data.room); if (!r || r.state !== 'starting') return;
-    const p = r.players.get(sock.id); if (!p) return;
-    p.ready = true;
-    if ([...r.players.values()].every(x => x.ready)) {
-      r.state = 'playing';
-      io.to(r.code).emit('go', { t: Date.now() });
-    } else {
-      io.to(r.code).emit('waiting', { id: sock.id });
-    }
-  });
-
-  // 即時位置（每秒十幾次，只轉給對手）
-  sock.on('st', (d) => {
-    const code = sock.data.room; if (!code) return;
-    sock.volatile.to(code).emit('st', { id: sock.id, s: d });
-  });
-
-  // 一局結束：抵達終點或出局
-  sock.on('done', (d = {}) => {
-    const r = rooms.get(sock.data.room); if (!r || r.state !== 'playing') return;
-    const p = r.players.get(sock.id); if (!p) return;
-    p.res = { fin: !!d.fin, prog: Math.max(0, Math.min(1, +d.prog || 0)), touches: +d.touches || 0, coins: +d.coins || 0, time: +d.time || 0 };
-    if (p.res.fin) return finishMatch(r, sock.id, 'finish');      // 先抵達終點的人獲勝
-    const all = [...r.players.values()];
-    if (all.every(x => x.res)) {                                    // 全部出局：飛得遠的人獲勝
-      const best = all.slice().sort((a, b) => b.res.prog - a.res.prog || a.res.touches - b.res.touches);
-      const winner = best.length > 1 && Math.abs(best[0].res.prog - best[1].res.prog) < 0.002 ? null : best[0].id;
-      finishMatch(r, winner, 'out');
-    } else {
-      sock.to(r.code).emit('oppOut', { id: sock.id });
-    }
-  });
-
-  sock.on('back', () => {
-    const r = rooms.get(sock.data.room); if (!r) return;
-    if (r.state === 'result') { r.state = 'lobby'; for (const p of r.players.values()) { p.lr = false; p.ready = false; p.res = null; } }
-    sendRoom(r);
-  });
-
-  // 語音：轉送 WebRTC 連線資料
-  sock.on('rtc', (d = {}) => {
-    if (!d.to) return;
-    const r = rooms.get(sock.data.room); if (!r || !r.players.has(d.to)) return;
-    io.to(d.to).emit('rtc', { from: sock.id, data: d.data });
-  });
-  sock.on('rtc-renew', () => { const code = sock.data.room; if (code) sock.to(code).emit('rtc-renew', { from: sock.id }); });
-
-  sock.on('disconnect', () => leaveRoom(sock));
+  sock.onAny((ev, d) => { if (EVENTS.has(ev)) { try { hub.handle(sock.id, ev, d); } catch (e) { console.error('房間錯誤', e.message); } } });
+  sock.on('disconnect', () => hub.leave(sock.id));
 });
 
 const PORT = process.env.PORT || 3000;
