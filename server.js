@@ -89,6 +89,9 @@ function boardRows(all, q) {
   const T = x => !!(x.data && x.data.v2 && x.data.v2.title);
   if (q.mode === 'endless')
     return all.map(x => { const m = +((x.data && x.data.v2 && x.data.v2.endless) || 0); return m > 0 ? { name: x.name, m, ti: T(x) } : null; }).filter(Boolean).sort((a, b) => b.m - a.m);
+  if (q.mode === 'mp')
+    return all.map(x => { const m = (x.data && x.data.mp) || {}; const n = +m.n || 0; return n > 0 ? { name: x.name, n, w: +m.w || 0, p: +m.p || 0, ti: T(x) } : null; })
+      .filter(Boolean).sort((a, b) => b.w - a.w || b.p - a.p || a.n - b.n);
   if (q.mode === 'boss')
     return all.map(x => { const br = (x.data && x.data.v2 && x.data.v2.brush) || {}; let n = 0, t = 0; for (const k in br) { const v = +br[k] || 0; if (v > 0) { n++; t += v; } } return n > 0 ? { name: x.name, n, t: +t.toFixed(1), ti: T(x) } : null; })
       .filter(Boolean).sort((a, b) => b.n - a.n || a.t - b.t);
@@ -119,7 +122,7 @@ app.get('/api/find', async (req, res) => {
     const q = clean(req.query.name, 12); if (!q) return res.status(400).json({ err: '請輸入名字' });
     const r = await pool.query('select name,data from dk_players order by updated_at desc limit 5000');
     const hits = r.rows.filter(x => x.name.toLowerCase().includes(q.toLowerCase())).sort((a, b) => (a.name === q ? -1 : 0) - (b.name === q ? -1 : 0)).slice(0, 8);
-    const boards = [['1.0 經典版', { ver: '1' }], ['2.0 進階版', { ver: '2' }], ['無盡模式', { mode: 'endless' }], ['魔王挑戰賽', { mode: 'boss' }]].map(([k, qq]) => [k, boardRows(r.rows, qq)]);
+    const boards = [['1.0 經典版', { ver: '1' }], ['2.0 進階版', { ver: '2' }], ['無盡模式', { mode: 'endless' }], ['魔王挑戰賽', { mode: 'boss' }], ['對戰', { mode: 'mp' }]].map(([k, qq]) => [k, boardRows(r.rows, qq)]);
     const day = clean(req.query.day, 10);
     const dr = /^\d{4}-\d{2}-\d{2}$/.test(day) ? (await pool.query('select p.name,d.t from dk_daily d join dk_players p on p.id=d.player_id where d.day=$1 order by d.t asc', [day])).rows : [];
     const out = hits.map(x => {

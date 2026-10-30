@@ -83,7 +83,7 @@ html,body{height:100%;margin:0;background:var(--ink);color:var(--fg);font-family
 .svSlot{background:var(--panel2);border-radius:12px;padding:10px 12px;margin-bottom:10px}.svSlot b{font-size:15px}.svSlot p{margin:4px 0 8px;font-size:13px;color:var(--muted)}
 .svSlot .btns{margin:0}.svMid{border:1px solid #3ddc97;background:#12261f}
 
-.seg.five{grid-template-columns:repeat(5,minmax(0,1fr))}.seg.five button{padding:9px 2px;font-size:13px}
+.seg.five{grid-template-columns:repeat(3,minmax(0,1fr))}.seg.five button{padding:9px 2px;font-size:13px}
 .rkFind{display:flex;gap:8px;margin-bottom:10px}.rkFind input{flex:1;min-width:0}
 #rkFound{background:#11192a;border:1px solid #2e3d5a;border-radius:12px;padding:10px;margin-bottom:12px}
 .fdP{padding:8px 4px;border-bottom:1px dashed #2e3d5a}.fdP:last-child{border-bottom:0}.fdP>b{font-size:16px}
@@ -99,6 +99,8 @@ html,body{height:100%;margin:0;background:var(--ink);color:var(--fg);font-family
 @keyframes btGlow{0%,100%{box-shadow:0 0 6px #ff2a6d,0 0 14px #ffb62788}50%{box-shadow:0 0 12px #ffd84a,0 0 26px #ff2a6dcc}}
 @keyframes btShine{0%{left:-40%}60%,100%{left:130%}}
 
+#mprTotal{margin-top:12px}#mprTotal h3{margin:0 0 6px;font-size:15px;color:#ffd84a;text-align:center}#mprTotal .mprRow span:last-child{color:#ffd84a;font-weight:900}
+.svOk{display:inline-block;margin-left:8px;color:#3ddc97;font-weight:900;font-size:13px}.svSlot.just{box-shadow:inset 0 0 0 2px #3ddc97}
 .wallGrp{font-size:13px;color:#ffd84a;font-weight:900;margin:8px 0 6px}.wallGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .wallBtn{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 4px;font-size:12.5px;min-width:0}.wallBtn canvas{width:100%;height:auto;border-radius:8px;display:block}
 .wallBtn[aria-pressed="true"]{border-color:var(--cyan);box-shadow:inset 0 0 0 2px var(--cyan);background:#52e5ff22;color:#fff}.wallRandRow{margin-top:10px;display:flex;gap:8px;align-items:center;font-size:14px}
@@ -284,7 +286,14 @@ details.settings .inner{display:flex;flex-direction:column;gap:12px}
 #calib{position:fixed;left:0;right:0;bottom:0;z-index:9;display:flex;justify-content:center;pointer-events:none;
   padding:0 12px calc(env(safe-area-inset-bottom,0px) + 12px)}
 #calib.top{top:0;bottom:auto;align-items:flex-start;padding:calc(env(safe-area-inset-top,0px) + 54px) 12px 0}
-#calib .card{pointer-events:auto;gap:10px;padding:16px;width:min(520px,100%);background:#131c2aee}
+#calib .card{pointer-events:auto;gap:10px;padding:16px;width:min(520px,100%);background:#131c2aee;max-height:calc(100dvh - 70px);overflow:auto}
+#calib .row{position:sticky;bottom:-16px;background:#131c2a;padding:8px 0 4px;margin-bottom:-4px}
+#lvIntro{position:fixed;left:50%;top:22%;transform:translateX(-50%);z-index:12;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;width:max-content;max-width:92vw}
+#lvIntro[hidden]{display:none}
+#lvIntro b{font-size:clamp(22px,6vw,34px);font-weight:900;color:#fff;text-shadow:0 0 14px #52e5ff,0 3px 0 #0b2a40;letter-spacing:1px}
+#lvIntro span{font-size:clamp(15px,4vw,19px);font-weight:900;color:#ffd84a;background:#000a;padding:4px 14px;border-radius:999px}
+#lvIntro.show{animation:lvIn 3.2s ease both}
+@keyframes lvIn{0%{opacity:0;transform:translateX(-50%) scale(.7)}10%{opacity:1;transform:translateX(-50%) scale(1.06)}16%{transform:translateX(-50%) scale(1)}80%{opacity:1}100%{opacity:0}}
 #calib h2{margin:0;font-size:19px}
 #calib ol{margin:0;padding-left:20px;font-size:14px;line-height:1.7;color:#d6e0ec}
 #calib .row{justify-content:space-between}
@@ -331,6 +340,7 @@ details.settings .inner{display:flex;flex-direction:column;gap:12px}
 <div id="camBox" hidden><video id="camv" playsinline muted autoplay></video></div>
 <div id="camWarn" hidden>鏡頭被遮住，或前方景物太單調</div>
 <div id="count" hidden></div>
+<div id="lvIntro" hidden><b></b><span></span></div>
 
 <!-- 主選單 -->
 <div id="menu" class="overlay">
@@ -449,7 +459,7 @@ details.settings .inner{display:flex;flex-direction:column;gap:12px}
     <div class="lvHead"><h2>排行榜</h2><button class="small" id="rankBack">返回</button></div>
     <div class="rkFind"><input id="rkFind" maxlength="12" placeholder="查詢玩家名字" autocomplete="off"><button id="rkFindBtn">查詢</button></div>
     <div id="rkFound" hidden></div>
-    <div class="seg five" id="rkVer"><button data-v="1">1.0</button><button data-v="2">2.0</button><button data-v="endless">無盡</button><button data-v="daily">每日</button><button data-v="boss">魔王賽</button></div>
+    <div class="seg five" id="rkVer"><button data-v="1">1.0</button><button data-v="2">2.0</button><button data-v="endless">無盡</button><button data-v="daily">每日</button><button data-v="boss">魔王賽</button><button data-v="mp">對戰</button></div>
     <div class="seg" id="rkTabs"><button data-v="total" aria-pressed="true">總排行</button><button data-v="level" aria-pressed="false">單關最快</button></div>
     <select id="rkLv" hidden></select>
     <p class="hint" id="rkHint"></p>
@@ -587,6 +597,7 @@ details.settings .inner{display:flex;flex-direction:column;gap:12px}
   <div class="card">
     <h2 class="title" id="mprTitle" style="font-size:34px">勝利！</h2>
     <div id="mprTable"></div>
+    <div id="mprTotal"></div>
     <p class="hint" id="mprNote"></p>
     <button class="primary" id="mprNext">下一關</button>
     <button id="mprAgain">再來一局（同一關）</button>
@@ -1950,7 +1961,7 @@ function drawWorld(now,t){
     cols.forEach((c,i)=>{ctx.fillStyle=c;ctx.globalAlpha=.75;ctx.fillRect(tipX-w*1.8,py-w*.18+i*w*.06,w*1.4,w*.06)});ctx.globalAlpha=1}
   if(clock-bombRing<700){const k=(clock-bombRing)/700;circle(tipX,Y(probeY),playH*(.1+1.6*k),null,'rgba(255,240,200,'+(1-k).toFixed(2)+')',10*(1-k)+2)}
   drawSpecialWorld(now,t);
-  if(!oppView){drawBossGate(now);drawBoss(now,t);drawGhost(now,t)}
+  if(!oppView){drawBossGate(now);drawBoss(now,t);drawGhost(now,t)}else drawOppBoss(now);
   // 子彈
   for(const b of bullets){const x=SX(b.x),y=Y(b.y);ctx.fillStyle='rgba(255,180,60,.35)';ctx.fillRect(x-playH*.05,y-3,playH*.05,6);rrect(x-playH*.018,y-3.5,playH*.026,7,3.5,'#fff2a8','#ff8a2a',1.5)}
   drawPlane(now,t);
@@ -2132,7 +2143,7 @@ function resetRun(){
   v2Reset();
 }
 function startLevel(n){
-  level=n;RUN.resumed=false;wallPick();course=buildLevel(n);maxHearts=hearts=course.L.lives;resetRun();updateHud();
+  level=n;RUN.resumed=false;RUN.runId=Date.now();wallPick();course=buildLevel(n);maxHearts=hearts=course.L.lives;resetRun();updateHud();
   $('#hud').hidden=false;enterCalib();
 }
 const STEPS={
@@ -2154,26 +2165,44 @@ function featureHint(L){
 function enterCalib(){
   mode='calib';showOnly('#calib');$('#hud').hidden=false;
   const L=course.L;
-  $('#calibIntro').textContent=RUN.mode==='brush'?'魔王挑戰賽　第 '+level+' 戰　'+BOSSDEF[BRUSH[level-1]].name+'（'+DIFFS[L.diff].name+'）　打倒魔王，終點大門才會打開！':RUN.mode==='endless'?'無盡模式（'+DIFFS[L.diff].name+'）　路線沒有終點，看你能飛多遠！':RUN.mode==='daily'?'每日挑戰　'+dayKey()+'（中等難度）　本關會出現：'+featureHint(L):(RUN.ver===2?'2.0 進階版　':'')+'第 '+L.n+' 關　'+(RUN.ver===2?LV2[L.n-1].name:L.name)+'（'+tierName(L.n)+'，'+DIFFS[L.diff].name+'）　本關會出現：'+featureHint(L);
+  const LT=levelTitle();
+  $('#calibIntro').textContent=LT.main+'（'+DIFFS[L.diff].name+'）';
   $('#calibTitle').textContent=!sensorMode()?'準備':(vert?'校準中間位置':'校準高度');
-  $('#calibSteps').innerHTML=(vert?STEPS_V:STEPS)[S.control].map(s=>'<li>'+s+'</li>').join('')+(RUN.ver===2||RUN.mode!=='level'?v2CalibInfo():'');
+  const st=(vert?STEPS_V:STEPS)[S.control];
+  $('#calibSteps').innerHTML=(sensorMode()?st:st.slice(0,1)).map(s=>'<li>'+s+'</li>').join('')+
+    (S.advance==='manual'?'<li style="color:#ffd84a">手動前進：按住「加速」才會往前飛，放開會慢慢停下。</li>':'');
   $('#calib').classList.toggle('top',vert);
   $('#calibInvert').hidden=$('#calibZero').hidden=!sensorMode();
   $('#camBox').hidden=S.control!=='camera';
-  if(S.advance==='manual'){const li=s=>'<li style="color:#ffd84a">'+s+'</li>';
-    $('#calibSteps').insertAdjacentHTML('beforeend',li('手動前進：飛機不會自己往前飛。')+
-      (isTouch?li('把手機上方往前傾'+(vert?'':'或往右傾')+'就會前進，傾越多飛越快；擺正或往後、往左傾就停在原地。也可以按住右邊「加速」前進，點左邊「停止」立刻煞住。'):
-      li('按住「加速」或空白鍵（方向鍵右、上）前進，放開就慢慢停下；按「停止」或方向鍵左立刻煞住。')))}
-  else $('#calibSteps').insertAdjacentHTML('beforeend','<li style="color:#ffd84a">按住右邊「加速」'+(isTouch?'':'（或空白鍵）')+'飛快一點但比較難閃；按住左邊「停止」'+(isTouch?'':'（或方向鍵左）')+'可以煞車停在原地等危險過去。</li>');
   cam=0;calibrate();
   if(S.control==='tilt'){tiltSeen=false;setTimeout(()=>{if(mode==='calib'&&!tiltSeen){$('#calibSteps').insertAdjacentHTML('beforeend','<li style="color:#ffb627">沒有收到傾斜感應訊號，這台裝置可能不支援，請改用其他操作方式。</li>')}},1500)}
   if(S.control==='motion'){motionSeen=false;setTimeout(()=>{if(mode==='calib'&&!motionSeen){$('#calibSteps').insertAdjacentHTML('beforeend','<li style="color:#ffb627">沒有收到動作感應訊號，這台裝置可能沒有感應器，請改用其他操作方式。</li>')}},1500)}
 }
 let countTimer=null;
+// 關卡開始時，在畫面上顯示這是什麼關卡
+function levelTitle(){
+  const L=course.L;
+  if(RUN.mode==='brush')return {main:'魔王挑戰賽　第 '+level+' 戰',sub:'魔王：'+BOSSDEF[BRUSH[level-1]].name};
+  if(RUN.mode==='endless')return {main:'無盡模式',sub:'看你能飛多遠！'};
+  const sp=RUN.ver===2||RUN.mode==='daily'?(RUN.mode==='daily'?course.chunks[0]:LV2[level-1]):null;
+  let sub='';
+  if(sp){const a=(sp.sp||[]).map(k=>SPINFO[k].title),bs=(sp.boss||[]);sub=bs.length?'魔王關：'+bs.map(b=>BOSSDEF[b].name).join('、'):a.length?a.join('・'):'一般關卡'}
+  else sub=tierName(L.n);
+  if(RUN.mode==='daily')return {main:'每日挑戰　'+dayKey(),sub};
+  return {main:(RUN.ver===2?'2.0 ':'')+'第 '+level+' 關　'+(RUN.ver===2?lvName(level):L.name),sub};
+}
+let lvIntroT=null;
+function showLvIntro(){
+  const el=$('#lvIntro');if(!el)return;const LT=levelTitle();
+  el.querySelector('b').textContent=LT.main;el.querySelector('span').textContent=LT.sub;
+  el.hidden=false;el.classList.remove('show');void el.offsetWidth;el.classList.add('show');
+  clearTimeout(lvIntroT);lvIntroT=setTimeout(()=>{el.hidden=true},3200);
+}
 function startCountdown(){
   if(sensorMode()&&mode==='calib')calibrate();
   mode='count';showOnly(null);$('#hud').hidden=false;try{document.activeElement&&document.activeElement.blur()}catch(e){}
   const el=$('#count');let n=3;el.hidden=false;el.textContent=n;sfx.tick();keepAwake();
+  showLvIntro();
   clearInterval(countTimer);
   countTimer=setInterval(()=>{n--;if(n>0){el.textContent=n;sfx.tick()}else{clearInterval(countTimer);el.textContent='出發！';sfx.go();mode='play';last=performance.now();setTimeout(()=>{if(el.textContent==='出發！')el.hidden=true},600)}},800);
 }
@@ -2187,6 +2216,7 @@ function pauseGame(){
 function finish(win){
   if(mode==='over')return;
   if(MP.on){mpFinish(win);return}
+  clearRunMid();
   mode='over';$('#count').hidden=true;$('#iceMeter').hidden=true;frozen=false;
   let stars=0;
   let newBest=false;const P=RUN.ver===2?PROG2:PROG,isLv=RUN.mode==='level';
@@ -2346,8 +2376,8 @@ $('#calibZero').addEventListener('click',calibrate);
 $('#pauseBtn').addEventListener('click',pauseGame);
 $('#resumeBtn').addEventListener('click',()=>{showOnly(null);if(MP.on)return;startCountdown()});
 $('#recalBtn').addEventListener('click',()=>{const c=cam;enterCalib();cam=c});
-$('#restartBtn').addEventListener('click',()=>startLevel(level));
-$('#quitBtn').addEventListener('click',()=>{if(MP.on){mpLeaveRoom();return}if(RUN.mode==='brush'){toMenu();showBrush();return}if(RUN.mode!=='level'){RUN.mode='level';RUN.dk=null;toMenu();refreshVer();return}toLevels()});
+$('#restartBtn').addEventListener('click',()=>{clearRunMid();startLevel(level)});
+$('#quitBtn').addEventListener('click',()=>{if(MP.on){mpLeaveRoom();return}if(autoMid()){saveSaves();setTimeout(()=>banner('已自動儲存，首頁按「接續中斷的遊戲」就能接著玩','good',2600),50)}if(RUN.mode==='brush'){toMenu();showBrush();return}if(RUN.mode!=='level'){RUN.mode='level';RUN.dk=null;toMenu();refreshVer();return}toLevels()});
 $('#againBtn').addEventListener('click',()=>{if(RUN.mode==='endless')RUN.seed=(Math.random()*1e6)|0;startLevel(level)});
 $('#nextBtn').addEventListener('click',()=>startLevel(Math.min(30,level+1)));
 $('#menuBtn').addEventListener('click',()=>{if(RUN.mode==='brush'){toMenu();showBrush();return}if(RUN.mode!=='level'){RUN.mode='level';RUN.dk=null;toMenu();refreshVer();return}toLevels()});
@@ -2358,7 +2388,7 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden){if(!MP.on)
 const CLOUD={token:null,name:null,ok:false};
 try{CLOUD.token=localStorage.getItem('dkToken');CLOUD.name=localStorage.getItem('dkName')}catch(e){}
 const cloudCan=()=>location.protocol==='http:'||location.protocol==='https:';
-function cloudData(){return {saves:{mid:MID,slots:SLOTS},v:1,stars:PROG.stars,best:PROG.best,v2:PROG2,ver:S.ver,ghost:S.ghost,cos:S.cos,advance:S.advance,plane:S.plane,theme:S.theme,wallRand:S.wallRand,diff:S.diff,dir:S.dir,sens:S.sens,invert:S.invert,music:S.music,sound:S.sound}}
+function cloudData(){return {mp:MPST,saves:{mid:MID,slots:SLOTS},v:1,stars:PROG.stars,best:PROG.best,v2:PROG2,ver:S.ver,ghost:S.ghost,cos:S.cos,advance:S.advance,plane:S.plane,theme:S.theme,wallRand:S.wallRand,diff:S.diff,dir:S.dir,sens:S.sens,invert:S.invert,music:S.music,sound:S.sound}}
 function cloudKeep(){try{if(CLOUD.token){localStorage.setItem('dkToken',CLOUD.token);localStorage.setItem('dkName',CLOUD.name||'')}else{localStorage.removeItem('dkToken');localStorage.removeItem('dkName')}}catch(e){}}
 async function api(path,body){
   const r=await fetch(path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json','x-token':CLOUD.token||''},body:body?JSON.stringify(body):undefined});
@@ -2374,6 +2404,7 @@ function mergeCloud(d,applySettings){
   updateCont();
   try{localStorage.setItem('dynamicFlightProgress',JSON.stringify(PROG))}catch(e){}
   if(d.saves&&typeof mergeSaves==='function')mergeSaves(d.saves);
+  if(d.mp&&typeof mergeMpSt==='function')mergeMpSt(d.mp);
   if(applySettings){for(const k of ['plane','theme','wallRand','diff','dir','sens','invert','music','sound','advance','ver','ghost','cos'])if(d[k]!=null)S[k]=d[k];RUN.ver=S.ver==='2'?2:1;
     try{localStorage.setItem('dynamicFlightSettings2',JSON.stringify(S))}catch(e){}refreshMenu()}
 }
@@ -2437,19 +2468,19 @@ function showRank(){
 }
 function rkLvOpts(){const sel=$('#rkLv'),list=RK.ver==='2'?LV2.map((l,i)=>({n:i+1,name:l.name})):LV;sel.innerHTML=list.map(l=>'<option value="'+l.n+'">第 '+l.n+' 關　'+l.name+'</option>').join('');sel.value=RK.lv}
 async function loadRank(){
-  const sp=RK.ver==='endless'||RK.ver==='daily'||RK.ver==='boss';
+  const sp=RK.ver==='endless'||RK.ver==='daily'||RK.ver==='boss'||RK.ver==='mp';
   $('#rkVer').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===RK.ver)));
   $('#rkTabs').hidden=sp;
   $('#rkTabs').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===RK.tab)));
   $('#rkLv').hidden=RK.tab!=='level'||sp;$('#rkErr').hidden=true;$('#rkMe').innerHTML='';
-  $('#rkHint').textContent=RK.ver==='boss'?'魔王挑戰賽：打倒越多魔王越前面，一樣多就比總時間。':RK.ver==='endless'?'無盡模式飛最遠的距離。':RK.ver==='daily'?'今天（'+dayKey()+'）每日挑戰最快的時間，每天換新。':(RK.ver==='2'?'2.0 進階版：':'1.0 經典版：')+(RK.tab==='total'?'依照「星星總數 → 過關數 → 收集星星」排名。':'這一關最快抵達終點的時間（單人闖關）。');
+  $('#rkHint').textContent=RK.ver==='mp'?'對戰：贏最多場的排前面，一樣多就比總積分（第 1 名 4 分、第 2 名 3 分…）。1.0、2.0 一起算。':RK.ver==='boss'?'魔王挑戰賽：打倒越多魔王越前面，一樣多就比總時間。':RK.ver==='endless'?'無盡模式飛最遠的距離。':RK.ver==='daily'?'今天（'+dayKey()+'）每日挑戰最快的時間，每天換新。':(RK.ver==='2'?'2.0 進階版：':'1.0 經典版：')+(RK.tab==='total'?'依照「星星總數 → 過關數 → 收集星星」排名。':'這一關最快抵達終點的時間（單人闖關）。');
   if(!cloudCan()){$('#rkList').innerHTML='';$('#rkErr').textContent='排行榜要用遊戲網址開啟，並登入雲端存檔才會列入。';$('#rkErr').hidden=false;return}
   $('#rkList').innerHTML='<p class="hint">讀取中…（免費主機閒置後第一次可能要等 30 秒）</p>';
   try{
-    const q=RK.ver==='boss'?'/api/rank?mode=boss':RK.ver==='endless'?'/api/rank?mode=endless':RK.ver==='daily'?'/api/daily?day='+dayKey():'/api/rank?ver='+RK.ver+(RK.tab==='level'?'&level='+RK.lv:'');
-    const j=await api(q),kind=RK.ver==='boss'?'b':RK.ver==='endless'?'m':RK.ver==='daily'?'t':RK.tab;
+    const q=RK.ver==='mp'?'/api/rank?mode=mp':RK.ver==='boss'?'/api/rank?mode=boss':RK.ver==='endless'?'/api/rank?mode=endless':RK.ver==='daily'?'/api/daily?day='+dayKey():'/api/rank?ver='+RK.ver+(RK.tab==='level'?'&level='+RK.lv:'');
+    const j=await api(q),kind=RK.ver==='mp'?'v':RK.ver==='boss'?'b':RK.ver==='endless'?'m':RK.ver==='daily'?'t':RK.tab;
     const row=(x,no,me)=>'<div class="rk'+(me?' me':'')+'"><span class="no">'+no+'</span><b>'+nameHtml(x.name,x.ti)+'</b><span class="v">'+
-      (kind==='b'?'打倒 '+x.n+' 個<small>總時間 '+x.t+' 秒</small>':kind==='m'?x.m+' 公尺':kind==='total'?'★ '+x.s+'<small>過 '+x.n+' 關・收集 '+x.c+'</small>':(+x.t).toFixed(1)+' 秒<small>'+(DIFFS[x.d]?DIFFS[x.d].name+'・':'')+'★'.repeat(x.s||0)+'</small>')+'</span></div>';
+      (kind==='v'?'勝 '+x.w+' 場<small>共 '+x.n+' 場・積分 '+x.p+'</small>':kind==='b'?'打倒 '+x.n+' 個<small>總時間 '+x.t+' 秒</small>':kind==='m'?x.m+' 公尺':kind==='total'?'★ '+x.s+'<small>過 '+x.n+' 關・收集 '+x.c+'</small>':(+x.t).toFixed(1)+' 秒<small>'+(DIFFS[x.d]?DIFFS[x.d].name+'・':'')+'★'.repeat(x.s||0)+'</small>')+'</span></div>';
     $('#rkList').innerHTML=j.rows.length?j.rows.map((x,i)=>row(x,i+1,CLOUD.ok&&x.name===CLOUD.name)).join(''):'<p class="hint">還沒有人上榜，快來搶第一名！</p>';
     $('#rkMe').innerHTML=j.me?'<p class="hint">你的名次（共 '+j.total+' 人）</p>'+row(j.me,j.me.rank,true):
       '<p class="hint">'+(CLOUD.ok?'你還沒有'+(RK.tab==='total'?'過關紀錄':'這一關的通關紀錄')+'。':'登入雲端存檔後，你的成績才會列入排行榜。')+'</p>';
@@ -2467,7 +2498,7 @@ async function findPlayer(){
   box.innerHTML='<p class="hint">查詢中…</p>';
   try{const j=await api('/api/find?name='+encodeURIComponent(q)+'&day='+dayKey());
     if(!j.players.length){box.innerHTML='<p class="hint">找不到名字有「'+esc(q)+'」的玩家。</p>';return}
-    box.innerHTML='<p class="hint">查詢結果（'+j.players.length+' 位）</p>'+j.players.map(p=>'<div class="fdP">'+nameHtml(p.name,p.ti)+'<div class="fdB">'+p.boards.map(b=>'<span>'+b.k+'</span><span>'+(b.rank?'第 '+b.rank+' 名 / '+b.total+' 人'+(b.s!=null?'　★'+b.s:b.m!=null?'　'+b.m+' 公尺':b.k==='魔王挑戰賽'?'　打倒 '+b.n+' 個':b.t!=null?'　'+(+b.t).toFixed(1)+' 秒':''):'沒有紀錄')+'</span>').join('')+'</div></div>').join('');
+    box.innerHTML='<p class="hint">查詢結果（'+j.players.length+' 位）</p>'+j.players.map(p=>'<div class="fdP">'+nameHtml(p.name,p.ti)+'<div class="fdB">'+p.boards.map(b=>'<span>'+b.k+'</span><span>'+(b.rank?'第 '+b.rank+' 名 / '+b.total+' 人'+(b.s!=null?'　★'+b.s:b.m!=null?'　'+b.m+' 公尺':b.k==='魔王挑戰賽'?'　打倒 '+b.n+' 個':b.k==='對戰'?'　勝 '+b.w+' 場 / 共 '+b.n+' 場':b.t!=null?'　'+(+b.t).toFixed(1)+' 秒':''):'沒有紀錄')+'</span>').join('')+'</div></div>').join('');
   }catch(e){box.innerHTML='<p class="hint">'+esc(e.message||'查詢失敗')+'</p>'}
 }
 $('#rkFindBtn').addEventListener('click',findPlayer);
@@ -2874,7 +2905,7 @@ function mpTick(now){
     MP.lastSend=now;
     MP.sock.emit('st',{c:+cam.toFixed(3),y:+probeY.toFixed(3),t:+tilt.toFixed(2),h:hearts,mh:maxHearts,k:coins,sh:now<shockUntil?1:0,f:frozen?1:0,
       hs:+hs.toFixed(2),fl:+flameLvl.toFixed(2),p:S.plane,d:(mode==='over'&&hearts<=0)?1:0,md:mode,w:+wideLvl.toFixed(2),sd:now<shieldUntil?1:0,
-      sp:mode==='play'?+(spdNow*(now<slowUntil?.55:1)*(now<PW.dash?1.6:1)*thr).toFixed(2):0,len:+course.len.toFixed(2),bm:boostMul,oh:ohVis?1:0,pk:prankFlag(),bs:V2.arenaOn&&!V2.arenaDone?1:0,wait:RLY.wait?1:0,cos:S.cos,
+      sp:mode==='play'?+(spdNow*(now<slowUntil?.55:1)*(now<PW.dash?1.6:1)*thr).toFixed(2):0,len:+course.len.toFixed(2),bm:boostMul,oh:ohVis?1:0,pk:prankFlag(),bs:V2.arenaOn&&!V2.arenaDone?1:0,bo:V2.arenaOn&&!V2.arenaDone?V2.bosses.filter(b=>!b.dead).map(b=>[b.id,+b.rx.toFixed(3),+b.y.toFixed(3),b.set,+(b.rot||0).toFixed(2),Math.round(b.hp/b.max*100)]):undefined,ba:+AHEAD.toFixed(2),wait:RLY.wait?1:0,cos:S.cos,
       pw:Object.keys(ITEMS).filter(k=>untilOf(k)>now).map(k=>ITEMS[k].ch).join('')});
     if(MP.ai)for(const a of MP.ai){const o=MP.others.get(a.id);if(o&&o.s)MP.sock.emit('st',{ai:a.id,s:o.s})}
   }
@@ -2899,6 +2930,7 @@ function mpResult(r){
     $('#mprTitle').textContent=relay?(rk===1?TEAMNAME[myTeam]+'勝利！':TEAMNAME[myTeam]+'輸了…'):rk===1?'勝利！第 1 名':rk?'第 '+rk+' 名':'對戰結束';
     if(first&&rk===1&&RUN.ver===2){achieve(relay?'relay':'mpwin')}
     if(first)rk===1?sfx.win():sfx.lose();
+    if(first)mpTally(r,me);
     const rows=r.players.map(p=>{let x=p.res;
       if(p.id===me&&MP.myRes&&(!x||x.live))x=MP.myRes;
       const st=!x?'—':x.fin?'抵達終點':x.live?'還在飛 '+Math.min(99,Math.round(x.prog*100))+'%':'出局 '+Math.round(x.prog*100)+'%';
@@ -2908,6 +2940,7 @@ function mpResult(r){
     $('#mprTable').innerHTML='<div class="mprRow head"><span>名次</span><span>玩家</span><span>狀態</span><span>被電</span><span>星星</span></div>'+rows;
     const anyFin=r.players.some(p=>p.res&&p.res.fin);
     $('#mprNote').textContent=(anyFin?'依抵達終點的先後排名，沒抵達的人比飛得多遠。':'大家都出局了，飛得最遠的人獲勝。')+'　要玩下一關，還是同一關再來一局？';
+    renderMpTotal(me);
     mpRematchUI([],null);
   };
   if(first)setTimeout(()=>{if(MP.lastRes===r)render()},900);else if(MP.lastRes===r)render();
@@ -3073,8 +3106,11 @@ function drawPane(o,r,now){
     if(!vert){VW=W;VH=H;playTop=4;playH=Math.max(36,H-8);tipX=Math.round(Math.max(Math.min(W*.3,playH*.55),PLANE_W*playH*.5+8))}
     else{VW=H;VH=W;playH=Math.max(36,Math.min(W-6,H*.62));playTop=(W-playH)/2;tipX=Math.round(Math.max(H*.24,PLANE_W*playH*.5+8))}
     AHEAD=(VW-tipX)/playH;AS=Math.max(10,Math.round(playH*.1));spriteSz=Math.ceil(AS*1.6);
-    const ext=s.md==='play'?Math.min(.5,(clock-o.t)/1000)*course.L.speed*(s.sp||0):0;
-    boostMul=s.bm||1;ohVis=!!s.oh;S.cos=s.cos||{};cam=Math.min(s.c+ext,s.len||course.len);probeY=s.y;tilt=s.t||0;hs=s.hs||1;flameLvl=s.fl||0;heat=0;frozen=!!s.f;spdNow=s.sp||1;loopAng=0;mirrorSX=1;
+    // 平滑：網路資料一段一段來，畫面用追的，不會一跳一跳地晃
+    const ext=s.md==='play'?Math.min(.25,(clock-o.t)/1000)*course.L.speed*(s.sp||0):0,tc=Math.min(s.c+ext,s.len||course.len),fdt=clamp((clock-(o.dt0||clock))/1000,0,.1);o.dt0=clock;
+    if(o.dc==null||Math.abs(tc-o.dc)>1.2)o.dc=tc;else{const k=1-Math.exp(-fdt*(tc>o.dc?9:4));o.dc+=(tc-o.dc)*k}
+    if(o.dy==null||Math.abs(s.y-o.dy)>.5)o.dy=s.y;else o.dy+=(s.y-o.dy)*(1-Math.exp(-fdt*12));
+    boostMul=s.bm||1;ohVis=!!s.oh;S.cos=s.cos||{};cam=o.dc;probeY=o.dy;OPPS=s;tilt=s.t||0;hs=s.hs||1;flameLvl=s.fl||0;heat=0;frozen=!!s.f;spdNow=s.sp||1;loopAng=0;mirrorSX=1;
     shockUntil=s.sh||s.d?clock+200:0;invUntil=0;shieldUntil=s.sd?clock+1000:0;magnetUntil=0;wideLvl=s.w||0;parts=[];arcs=[];bullets=[];
     S.plane=s.p||o.plane;mode=s.d?'over':'play';hearts=s.h;muzzleT=0;windNow=0;fogLvl=0;bfogLvl=0;tempLvl=0;sandLvl=0;revOn=false;bombRing=0;warnLvl=0;touching=false;for(const k in PW)PW[k]=0;
     oppView=true;
@@ -3171,7 +3207,7 @@ function segVal2(s,u,L,d){
     case 'gate':return [toMid,gb+.12,1];
     case 'magnet':return [toMid+.04*Math.sin(TAU*u)*s.kW,gb+.16,1];
     case 'night':return [toMid+.08*Math.sin(TAU*u)*s.kW,gb+.1,1];
-    case 'boss':return [toMid,.64,1];
+    case 'boss':return [toMid,lerp(Math.max(gb,.5),.9,sstep(u/.22)),1]; // 魔王戰：通道加寬到幾乎整個畫面
   }
   return null;
 }
@@ -3596,7 +3632,7 @@ function drawSpecialWorld(now,t){
 }
 function drawNight(){
   if(V2.nightLvl<=.01)return;
-  const [px,py]=planeScreen(),dirx=vert?0:1,diry=vert?-1:0,len=Math.max(W,H)*.85,sp=.42,r0=Math.min(W,H)*.09;
+  const [px,py]=planeScreen(),fx=mirrorSX*Math.cos(loopAng),fy=Math.sin(loopAng),dirx=vert?fy:fx,diry=vert?-fx:fy,len=Math.max(W,H)*.85,sp=.42,r0=Math.min(W,H)*.09;
   ctx.save();ctx.globalAlpha=Math.min(1,V2.nightLvl);ctx.fillStyle='#020308';
   ctx.beginPath();ctx.rect(0,0,W,H);
   const ang=Math.atan2(diry,dirx);ctx.moveTo(px+Math.cos(ang-PI/2)*r0,py+Math.sin(ang-PI/2)*r0);
@@ -4092,7 +4128,8 @@ function makeMid(){
   for(const a of course.arenas||[])if(!a.done&&c>a.x0-1.7&&c<a.gateX+.3)c=Math.max(0,a.x0-1.8); // 魔王區裡面：退回入口前
   for(const f of course.forks||[])if(c>f.x0-.12&&c<f.x1)c=Math.max(0,f.x0-.15);                 // 分岔路裡面：退回岔路前
   const got=[];course.ev.forEach((e,i)=>{if(e.got&&e.x<=c+.01)got.push(i)});
-  return {t:Date.now(),ver:RUN.ver,mode:RUN.mode,level,seed:RUN.seed||0,dk:diffKey(),day:RUN.mode==='daily'?dayKey():null,
+  if(!RUN.runId)RUN.runId=Date.now();
+  return {run:RUN.runId,t:Date.now(),ver:RUN.ver,mode:RUN.mode,level,seed:RUN.seed||0,dk:diffKey(),day:RUN.mode==='daily'?dayKey():null,
     cam:+c.toFixed(3),hearts,maxHearts,coins,touches,elapsed:+elapsed.toFixed(2),got,
     arDone:(course.arenas||[]).map((a,i)=>(a.done||a.gateX<c)?i:-1).filter(i=>i>=0),
     pct:RUN.mode==='endless'?null:Math.round(clamp(c/course.len,0,1)*100),name:midTitle()};
@@ -4110,7 +4147,7 @@ async function loadMid(m){
   if(m.mode==='daily'&&m.day!==dayKey()){banner('這個每日挑戰已經換新路線了，不能接續','',2200);MID=null;saveSaves();renderSaves();return}
   ac();startMusic();
   if(!await prepareSensors($('#menuErr')))return;
-  RUN.ver=m.ver;RUN.mode=m.mode;RUN.seed=m.seed||0;RUN.dk=m.dk||null;RUN.resumed=true;
+  RUN.ver=m.ver;RUN.mode=m.mode;RUN.seed=m.seed||0;RUN.dk=m.dk||null;RUN.resumed=true;RUN.runId=m.run||Date.now();
   level=m.level;wallPick();course=buildLevel(level);maxHearts=hearts=course.L.lives;resetRun();
   $('#hud').hidden=false;enterCalib();applyMid(m);
   $('#calibIntro').textContent='接續中斷的遊戲：'+m.name+(m.pct!=null?'　（已完成 '+m.pct+'%）':'');
@@ -4134,12 +4171,15 @@ $('#saveQuitBtn').addEventListener('click',saveAndQuit);
 function slotSum(sl){
   const st=P=>{let n=0;for(const k in (P&&P.stars)||{})n+=+P.stars[k]||0;return n};
   const br=Object.keys((sl.prog2&&sl.prog2.brush)||{}).length;
-  return '1.0 ★'+st(sl.prog)+'　2.0 ★'+st(sl.prog2)+'　無盡 '+((sl.prog2&&sl.prog2.endless)||0)+' 公尺　魔王賽 '+br+'/12'+(sl.mid?'<br>含中斷的遊戲：'+esc(sl.mid.name):'');
+  const top=P=>{let n=0;for(const k in (P&&P.stars)||{})if(+P.stars[k]>0)n=Math.max(n,+k);return n};
+  return '1.0 過到第 '+top(sl.prog)+' 關 ★'+st(sl.prog)+'　2.0 過到第 '+top(sl.prog2)+' 關 ★'+st(sl.prog2)+'<br>'+'　無盡 '+((sl.prog2&&sl.prog2.endless)||0)+' 公尺　魔王賽 '+br+'/12'+(sl.mid?'<br>含中斷的遊戲：'+esc(sl.mid.name):'');
 }
 const deep=o=>JSON.parse(JSON.stringify(o));
+let svJust=null;
 function renderSaves(){
   $('#svMid').innerHTML=MID?'<div class="svSlot svMid"><b>中斷的遊戲</b><p>'+esc(MID.name)+(MID.pct!=null?'　已完成 '+MID.pct+'%':'')+'　（'+fmtTime(MID.t)+' 儲存）</p><div class="btns"><button class="primary" data-mid="go">接續遊戲</button><button class="small" data-mid="del">刪除</button></div></div>':'';
-  $('#svList').innerHTML=SLOTS.map((sl,i)=>'<div class="svSlot"><b>存檔 '+(i+1)+'</b><p>'+(sl?fmtTime(sl.t)+' 儲存<br>'+slotSum(sl):'（空的）')+'</p><div class="btns"><button data-sv="save" data-i="'+i+'">存到這格</button><button data-sv="load" data-i="'+i+'"'+(sl?'':' disabled')+'>讀取</button>'+(sl?'<button class="small" data-sv="del" data-i="'+i+'">刪除</button>':'')+'</div></div>').join('');
+  const J=svJust;svJust=null;
+  $('#svList').innerHTML=SLOTS.map((sl,i)=>'<div class="svSlot'+(J&&J.i===i?' just':'')+'"><b>存檔 '+(i+1)+'</b>'+(J&&J.i===i?'<span class="svOk">'+J.txt+'</span>':'')+'<p>'+(sl?fmtTime(sl.t)+' 儲存<br>'+slotSum(sl):'（空的）')+'</p><div class="btns"><button data-sv="save" data-i="'+i+'">存到這格</button><button data-sv="load" data-i="'+i+'"'+(sl?'':' disabled')+'>讀取</button>'+(sl?'<button class="small" data-sv="del" data-i="'+i+'">刪除</button>':'')+'</div></div>').join('');
 }
 function armed(b,txt){ // 按兩次才執行，避免按錯
   if(b.dataset.arm&&Date.now()-b.dataset.arm<3000)return true;
@@ -4150,15 +4190,16 @@ $('#saves').addEventListener('click',e=>{
   if(b.dataset.mid==='go'){loadMid(MID);return}
   if(b.dataset.mid==='del'){if(!armed(b,'再按一次刪除'))return;MID=null;saveSaves();renderSaves();return}
   const i=+b.dataset.i,k=b.dataset.sv;if(!k)return;
-  if(k==='save'){if(SLOTS[i]&&!armed(b,'再按一次覆蓋'))return;
-    SLOTS[i]={t:Date.now(),prog:deep(PROG),prog2:deep(PROG2),mid:MID?deep(MID):null,plane:S.plane,cos:deep(S.cos||{})};saveSaves();renderSaves();banner('已存到存檔 '+(i+1),'good',1500)}
+  if(k==='save'){
+    SLOTS[i]={t:Date.now(),prog:deep(PROG),prog2:deep(PROG2),mid:MID?deep(MID):null,plane:S.plane,cos:deep(S.cos||{}),mp:deep(MPST)};saveSaves();svJust={i,txt:'✓ 已經存好了（最新進度）'};renderSaves()}
   else if(k==='load'){const sl=SLOTS[i];if(!sl)return;if(!armed(b,'再按一次讀取'))return;
     for(const q in PROG)delete PROG[q];Object.assign(PROG,{stars:{},best:{}},deep(sl.prog||{}));
     const base={stars:{},best:{},endless:0,dailyBest:{},ach:{},achN:{},shop:['flame_normal','sticker_none','hat_none'],spent:0,tut:{},bossDown:{},brush:{},title:false};
     const keepTitle=PROG2.title; // 稱號是永久的，讀舊存檔也不會不見
     for(const q in PROG2)delete PROG2[q];Object.assign(PROG2,base,deep(sl.prog2||{}));if(keepTitle)PROG2.title=true;
     MID=sl.mid?deep(sl.mid):null;if(sl.plane)S.plane=sl.plane;if(sl.cos)S.cos=deep(sl.cos);
-    saveProg();saveProg2();saveSettings();saveSaves();try{refreshMenu()}catch(e){}refreshVer();renderSaves();banner('已讀取存檔 '+(i+1),'good',1600)}
+    if(sl.mp)Object.assign(MPST,deep(sl.mp));saveMpSt();
+    saveProg();saveProg2();saveSettings();saveSaves();try{refreshMenu()}catch(e){}refreshVer();svJust={i,txt:'✓ 已經讀取這個存檔'};renderSaves()}
   else if(k==='del'){if(!armed(b,'再按一次刪除'))return;SLOTS[i]=null;saveSaves();renderSaves()}
 });
 $('#saveBtn').addEventListener('click',()=>{showOnly('#saves');renderSaves()});
@@ -4190,6 +4231,35 @@ function dtOpen(){
 $('#dtGo').addEventListener('click',()=>{showOnly(null);startCountdown()});
 $('#dtSave').addEventListener('click',saveAndQuit);
 updateMidBtn();
+
+/* ---- 退出或關掉遊戲時自動存「中斷的遊戲」 ---- */
+function autoMid(){if(!canMidSave()||mode==='over')return false;MID=makeMid();try{localStorage.setItem('dkMid',JSON.stringify(MID))}catch(e){}updateMidBtn();return true}
+function clearRunMid(){if(MID&&RUN.runId&&MID.run===RUN.runId){MID=null;saveSaves()}}
+document.addEventListener('visibilitychange',()=>{if(document.hidden)autoMid()},true); // 比雲端上傳早一步
+addEventListener('pagehide',()=>{autoMid()});
+
+/* ---- 對戰成績：這個房間的總成績＋個人累計（自動存檔、納入排行榜） ---- */
+const MPST={n:0,w:0,p:0,t3:0};
+try{const m=JSON.parse(localStorage.getItem('dkMpSt')||'null');if(m)for(const k in MPST)MPST[k]=+m[k]||0}catch(e){}
+function saveMpSt(){try{localStorage.setItem('dkMpSt',JSON.stringify(MPST))}catch(e){}if(typeof cloudSave==='function')cloudSave(true)}
+function mergeMpSt(d){if(!d)return;if((+d.n||0)>MPST.n)for(const k in MPST)MPST[k]=+d[k]||0;try{localStorage.setItem('dkMpSt',JSON.stringify(MPST))}catch(e){}}
+let TALLY={code:null,n:0,p:new Map()};
+function mpTally(r,me){
+  const code=MP.room&&MP.room.code;if(TALLY.code!==code)TALLY={code,n:0,p:new Map()};
+  TALLY.n++;const N=r.players.length,relay=r.mode==='relay';
+  for(const p of r.players){const rk=p.rank||N,pts=relay?(rk===1?2:0):Math.max(0,N-rk+1);
+    const x=TALLY.p.get(p.id)||{name:p.name,ti:!!p.ti,w:0,p:0,n:0};x.name=p.name;x.n++;x.p+=pts;if(rk===1)x.w++;TALLY.p.set(p.id,x)}
+  const mine=r.players.find(p=>p.id===me);
+  if(mine){const rk=mine.rank||N;MPST.n++;if(rk===1)MPST.w++;if(rk<=3)MPST.t3++;MPST.p+=relay?(rk===1?2:0):Math.max(0,N-rk+1);saveMpSt()}
+}
+function renderMpTotal(me){
+  const box=$('#mprTotal');if(!box)return;
+  if(!TALLY.n){box.innerHTML='';return}
+  const a=[...TALLY.p.entries()].sort((x,y)=>y[1].w-x[1].w||y[1].p-x[1].p);
+  box.innerHTML='<h3>對戰總成績（這個房間已比 '+TALLY.n+' 場）</h3><div class="mprRow head"><span>名次</span><span>玩家</span><span>勝場</span><span>場數</span><span>積分</span></div>'+
+    a.map(([id,x],i)=>'<div class="mprRow'+(i===0?' win':'')+(id===me?' me':'')+'"><span class="no2">'+(i+1)+'</span><b>'+nameHtml(x.name+(id===me?'（你）':''),x.ti)+'</b><span>'+x.w+'</span><span>'+x.n+'</span><span>'+x.p+'</span></div>').join('')+
+    '<p class="hint">你的對戰總紀錄：共 '+MPST.n+' 場，贏 '+MPST.w+' 場（已自動存檔'+(CLOUD.ok?'，會列入排行榜「對戰」':'；登入雲端存檔後會列入排行榜')+'）</p>';
+}
 
 /* ======================================================================
    魔王挑戰賽（2.0）：依序直接挑戰 12 個魔王；全破得到「你才是大魔王」稱號
@@ -4259,6 +4329,22 @@ function showTitleWin(){
   renderAcct();updBrushBtn();
 }
 updBrushBtn();
+
+// 對戰：在其他玩家的分割畫面裡畫出他正在打的魔王
+let OPPS=null;
+function drawOppBoss(now){
+  const s=OPPS;if(!s)return;let list=s.bo,scaled=!!s.ba;
+  if(!list&&s.bs&&course.arenas){ // 電腦玩家沒有詳細資料：畫在魔王區前方
+    const ar=course.arenas.find(a=>s.c>=a.x0-.4&&s.c<=a.gateX+.2);
+    if(ar)list=ar.ids.slice(0,ar.ch&&ar.ch.seq?1:2).map((id,i)=>[id,AHEAD*(.62+i*.12),cAt(s.c)+(i?.12:-.05)+.04*Math.sin(now/500+i),'fly',0,null]);scaled=false}
+  if(!list)return;
+  for(const e of list){const [id,rx0,y0,set,rot,hp]=e;if(!BOSSDEF[id])continue;loadBossImgs(id);
+    const im=bossFrame(id,set||'fly',now/1000);if(!imgOK(im))continue;
+    const rx=scaled?rx0/s.ba*AHEAD:rx0,[w,h]=bossSize({id,d:BOSSDEF[id],sc:1}),x=tipX+rx*playH,y=Y(y0);
+    ctx.save();ctx.translate(x,y);if(vert&&BOSS_FRONT.has(id))ctx.rotate(PI/2);ctx.rotate(rot||0);ctx.drawImage(im,-w/2,-h/2,w,h);ctx.restore();
+    if(hp!=null){const bw=Math.max(30,Math.min(w,h)*.7);up(x,y-Math.max(w,h)*.5-6,()=>{rrect(-bw/2-1,-4,bw+2,8,4,'rgba(0,0,0,.6)');rrect(-bw/2,-3,bw*hp/100,6,3,hp<30?'#ff4d4d':'#ff8a2a')})}
+  }
+}
 
 // ==V2-END==
 // 測試用：讓自動測試可以直接跳關
