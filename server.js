@@ -12,7 +12,7 @@ function clean(t, n) { return String(t == null ? '' : t).replace(/[<>]/g, '').tr
 const app = express();
 app.use(express.static(__dirname, { extensions: ['html'] }));
 app.get('/health', (req, res) => res.send('ok'));
-app.use(express.json({ limit: '200kb' }));
+app.use(express.json({ limit: '400kb' }));
 
 /* ================= 雲端存檔 ================= */
 let pool = null;
@@ -24,7 +24,12 @@ if (process.env.DATABASE_URL) {
       id serial primary key, name text unique not null, salt text not null, hash text not null,
       data jsonb not null default '{}'::jsonb, created_at timestamptz default now(), updated_at timestamptz default now());
     create table if not exists dk_sessions(
-      token text primary key, player_id int references dk_players(id) on delete cascade, created_at timestamptz default now());`)
+      token text primary key, player_id int references dk_players(id) on delete cascade, created_at timestamptz default now());
+    create table if not exists dk_ghosts(
+      player_id int references dk_players(id) on delete cascade, lv int not null, dk text not null, t real not null, path jsonb not null,
+      updated_at timestamptz default now(), primary key(player_id,lv,dk));
+    create table if not exists dk_daily(
+      player_id int references dk_players(id) on delete cascade, day text not null, t real not null, primary key(player_id,day));`)
     .then(() => console.log('雲端存檔資料庫就緒'))
     .catch(e => console.error('資料庫連線失敗：', e.message));
 } else {
@@ -38,7 +43,7 @@ async function who(req) {
   const r = await pool.query('select p.id,p.name,p.data from dk_sessions s join dk_players p on p.id=s.player_id where s.token=$1', [t]);
   return r.rows[0] || null;
 }
-function cleanData(d) { try { const j = JSON.stringify(d || {}); return j.length < 100000 ? JSON.parse(j) : {}; } catch (e) { return {}; } }
+function cleanData(d) { try { const j = JSON.stringify(d || {}); return j.length < 250000 ? JSON.parse(j) : {}; } catch (e) { return {}; } }
 const tries = new Map(); // 簡單防止一直猜密碼
 function tooMany(req) { const ip = req.headers['x-forwarded-for'] || req.ip; const now = Date.now(); const a = (tries.get(ip) || []).filter(t => now - t < 60000); a.push(now); tries.set(ip, a); return a.length > 20; }
 
@@ -77,27 +82,93 @@ app.post('/api/save', async (req, res) => {
   catch (e) { res.status(500).json({ err: '存檔失敗' }); }
 });
 // 排行榜：不帶關卡是總排行（星星總數→過關數→收集星星），帶 level 是該關最快通關時間
+// 排行榜計算（總排行／單關／無盡／魔王挑戰賽）
+function boardRows(all, q) {
+  const lv = parseInt(q.level, 10), v2 = q.ver === '2';
+  const D = x => (v2 ? (x.data && x.data.v2) : x.data) || {};
+  const T = x => !!(x.data && x.data.v2 && x.data.v2.title);
+  if (q.mode === 'endless')
+    return all.map(x => { const m = +((x.data && x.data.v2 && x.data.v2.endless) || 0); return m > 0 ? { name: x.name, m, ti: T(x) } : null; }).filter(Boolean).sort((a, b) => b.m - a.m);
+  if (q.mode === 'boss')
+    return all.map(x => { const br = (x.data && x.data.v2 && x.data.v2.brush) || {}; let n = 0, t = 0; for (const k in br) { const v = +br[k] || 0; if (v > 0) { n++; t += v; } } return n > 0 ? { name: x.name, n, t: +t.toFixed(1), ti: T(x) } : null; })
+      .filter(Boolean).sort((a, b) => b.n - a.n || a.t - b.t);
+  if (lv >= 1 && lv <= 30)
+    return all.map(x => { const d = D(x), b = d.best && d.best[lv]; return b && +b.t > 0 ? { name: x.name, t: +b.t, c: +b.c || 0, d: b.d || '', s: +((d.stars || {})[lv]) || 0, ti: T(x) } : null; })
+      .filter(Boolean).sort((a, b) => a.t - b.t);
+  return all.map(x => {
+    const d = D(x), st = d.stars || {}, bb = d.best || {}; let s = 0, n = 0, c = 0;
+    for (const k in st) { const v = +st[k] || 0; if (v > 0) { s += v; n++; } }
+    for (const k in bb) c += +bb[k].c || 0;
+    return { name: x.name, s, n, c, ti: T(x) };
+  }).filter(x => x.n > 0).sort((a, b) => b.s - a.s || b.n - a.n || b.c - a.c);
+}
 app.get('/api/rank', async (req, res) => {
   if (needDb(res)) return;
   try {
     const me = await who(req);
     const r = await pool.query('select name,data from dk_players order by updated_at desc limit 5000');
-    const lv = parseInt(req.query.level, 10);
-    let rows;
-    if (lv >= 1 && lv <= 30) {
-      rows = r.rows.map(x => { const b = x.data && x.data.best && x.data.best[lv]; return b && +b.t > 0 ? { name: x.name, t: +b.t, c: +b.c || 0, d: b.d || '', s: +((x.data.stars || {})[lv]) || 0 } : null; })
-        .filter(Boolean).sort((a, b) => a.t - b.t);
-    } else {
-      rows = r.rows.map(x => {
-        const st = (x.data && x.data.stars) || {}, bb = (x.data && x.data.best) || {}; let s = 0, n = 0, c = 0;
-        for (const k in st) { const v = +st[k] || 0; if (v > 0) { s += v; n++; } }
-        for (const k in bb) c += +bb[k].c || 0;
-        return { name: x.name, s, n, c };
-      }).filter(x => x.n > 0).sort((a, b) => b.s - a.s || b.n - a.n || b.c - a.c);
-    }
+    const rows = boardRows(r.rows, req.query);
     const i = me ? rows.findIndex(x => x.name === me.name) : -1;
     res.json({ rows: rows.slice(0, 50), me: i >= 0 ? Object.assign({ rank: i + 1 }, rows[i]) : null, total: rows.length });
   } catch (e) { console.error(e.message); res.status(500).json({ err: '讀取排行榜失敗' }); }
+});
+// 排行榜查詢：輸入名字（可以只打一部分），列出這個玩家在各排行榜的名次
+app.get('/api/find', async (req, res) => {
+  if (needDb(res)) return;
+  try {
+    const q = clean(req.query.name, 12); if (!q) return res.status(400).json({ err: '請輸入名字' });
+    const r = await pool.query('select name,data from dk_players order by updated_at desc limit 5000');
+    const hits = r.rows.filter(x => x.name.toLowerCase().includes(q.toLowerCase())).sort((a, b) => (a.name === q ? -1 : 0) - (b.name === q ? -1 : 0)).slice(0, 8);
+    const boards = [['1.0 經典版', { ver: '1' }], ['2.0 進階版', { ver: '2' }], ['無盡模式', { mode: 'endless' }], ['魔王挑戰賽', { mode: 'boss' }]].map(([k, qq]) => [k, boardRows(r.rows, qq)]);
+    const day = clean(req.query.day, 10);
+    const dr = /^\d{4}-\d{2}-\d{2}$/.test(day) ? (await pool.query('select p.name,d.t from dk_daily d join dk_players p on p.id=d.player_id where d.day=$1 order by d.t asc', [day])).rows : [];
+    const out = hits.map(x => {
+      const bs = boards.map(([k, rows]) => { const i = rows.findIndex(y => y.name === x.name); return i >= 0 ? Object.assign({ k, rank: i + 1, total: rows.length }, rows[i]) : { k, rank: 0, total: rows.length }; });
+      const di = dr.findIndex(y => y.name === x.name); bs.push(di >= 0 ? { k: '今日每日挑戰', rank: di + 1, total: dr.length, t: dr[di].t } : { k: '今日每日挑戰', rank: 0, total: dr.length });
+      return { name: x.name, ti: !!(x.data && x.data.v2 && x.data.v2.title), boards: bs };
+    });
+    res.json({ players: out });
+  } catch (e) { console.error(e.message); res.status(500).json({ err: '查詢失敗' }); }
+});
+
+// 幽靈飛機：每個人每關（每種難度）只留最快的一次
+app.post('/api/ghost', async (req, res) => {
+  if (needDb(res)) return;
+  try {
+    const p = await who(req); if (!p) return res.status(401).json({ err: '請先登入' });
+    const lv = parseInt(req.body.lv, 10), dk = clean(req.body.dk, 8), t = +req.body.t, path = req.body.p;
+    if (!(lv >= 1 && lv <= 30) || !(t > 0) || !Array.isArray(path) || path.length > 20000) return res.status(400).json({ err: '資料不對' });
+    await pool.query(`insert into dk_ghosts(player_id,lv,dk,t,path) values($1,$2,$3,$4,$5)
+      on conflict(player_id,lv,dk) do update set t=excluded.t,path=excluded.path,updated_at=now() where dk_ghosts.t>excluded.t`, [p.id, lv, dk, t, JSON.stringify(path.map(v => Math.round(+v || 0)))]);
+    res.json({ ok: true });
+  } catch (e) { console.error(e.message); res.status(500).json({ err: '儲存失敗' }); }
+});
+app.get('/api/ghost', async (req, res) => {
+  if (needDb(res)) return;
+  try {
+    const r = await pool.query('select p.name,g.t,g.path from dk_ghosts g join dk_players p on p.id=g.player_id where g.lv=$1 and g.dk=$2 order by g.t asc limit 1', [parseInt(req.query.lv, 10) || 0, clean(req.query.dk, 8)]);
+    const g = r.rows[0]; res.json(g ? { name: g.name, t: g.t, p: g.path } : {});
+  } catch (e) { res.status(500).json({ err: '讀取失敗' }); }
+});
+// 每日挑戰
+app.post('/api/daily', async (req, res) => {
+  if (needDb(res)) return;
+  try {
+    const p = await who(req); if (!p) return res.status(401).json({ err: '請先登入' });
+    const day = clean(req.body.day, 10), t = +req.body.t; if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !(t > 0)) return res.status(400).json({ err: '資料不對' });
+    await pool.query(`insert into dk_daily(player_id,day,t) values($1,$2,$3) on conflict(player_id,day) do update set t=least(dk_daily.t,excluded.t)`, [p.id, day, t]);
+    const r = await pool.query('select player_id,t from dk_daily where day=$1 order by t asc', [day]);
+    res.json({ ok: true, rank: r.rows.findIndex(x => x.player_id === p.id) + 1, total: r.rows.length });
+  } catch (e) { console.error(e.message); res.status(500).json({ err: '儲存失敗' }); }
+});
+app.get('/api/daily', async (req, res) => {
+  if (needDb(res)) return;
+  try {
+    const me = await who(req);
+    const r = await pool.query('select p.name,d.t,p.data from dk_daily d join dk_players p on p.id=d.player_id where d.day=$1 order by d.t asc limit 500', [clean(req.query.day, 10)]);
+    const rows = r.rows.map(x => ({ name: x.name, t: x.t, ti: !!(x.data && x.data.v2 && x.data.v2.title) })), i = me ? rows.findIndex(x => x.name === me.name) : -1;
+    res.json({ rows: rows.slice(0, 50), me: i >= 0 ? Object.assign({ rank: i + 1 }, rows[i]) : null, total: rows.length });
+  } catch (e) { res.status(500).json({ err: '讀取失敗' }); }
 });
 
 app.post('/api/logout', async (req, res) => {
@@ -121,27 +192,35 @@ function RoomHub(send){
   const humans=r=>list(r).filter(p=>!p.ai);
   const toRoom=(r,ev,d,except,vol)=>{for(const p of humans(r))if(p.id!==except)send(p.id,ev,d,vol)};
   function newCode(){for(let i=0;i<300;i++){const c=String(Math.floor(1000+Math.random()*9000));if(!rooms.has(c))return c}return String(Date.now()).slice(-6)}
-  function view(r){return {code:r.code,host:r.host,level:r.level,diff:r.diff,state:r.state,
-    players:list(r).map(p=>({id:p.id,name:p.name,plane:p.plane,lr:p.lr,voice:!!p.voice,ai:!!p.ai,lvl:p.lvl||''}))}}
+  function view(r){return {code:r.code,host:r.host,level:r.level,diff:r.diff,state:r.state,ver:r.ver,prank:!!r.prank,mode:r.mode,
+    players:list(r).map(p=>({id:p.id,name:p.name,ti:!!p.ti,plane:p.plane,lr:p.lr,voice:!!p.voice,ai:!!p.ai,lvl:p.lvl||'',team:p.team||'A'}))}}
+  function pickTeam(r){const a=list(r).filter(x=>x.team==='A').length,b=list(r).filter(x=>x.team==='B').length;return a<=b?'A':'B'}
+  const isRelay=r=>r.mode==='relay';
   const sendRoom=r=>toRoom(r,'room',view(r));
   const sys=(r,text)=>toRoom(r,'chat',{name:'系統',text,sys:true,t:Date.now()});
   function rankAll(r){
     const a=list(r);
+    if(isRelay(r)){ // 接力：以隊伍排名，第二棒的成績代表全隊
+      const score=t=>{const L2=a.find(x=>x.team===t&&x.leg===2),L1=a.find(x=>x.team===t&&x.leg===1);
+        if(L2&&L2.res&&L2.res.fin)return [0,L2.finOrder];
+        const pr=L2&&L2.res&&!L2.res.waiting?L2.res.prog:(L1&&L1.res?L1.res.prog*.5:0);return [1,-pr]};
+      const ts=['A','B'].map(t=>({t,s:score(t)})).sort((x,y)=>x.s[0]-y.s[0]||x.s[1]-y.s[1]);
+      a.forEach(p=>p.rank=ts.findIndex(x=>x.t===p.team)+1);a.sort((x,y)=>x.rank-y.rank||x.leg-y.leg);return a}
     a.sort((x,y)=>{const fx=x.res&&x.res.fin,fy=y.res&&y.res.fin;
       if(fx&&fy)return x.finOrder-y.finOrder;if(fx)return -1;if(fy)return 1;
       return ((y.res&&y.res.prog)||0)-((x.res&&x.res.prog)||0)||((x.res&&+x.res.touches)||0)-((y.res&&+y.res.touches)||0)});
     a.forEach((p,i)=>p.rank=i+1);return a;
   }
   function resView(r){const a=rankAll(r);
-    return {reason:r.reason,winner:a[0]?a[0].id:null,players:a.map(p=>({id:p.id,name:p.name,plane:p.plane,ai:!!p.ai,res:p.res||null,rank:p.rank,rm:!!p.rm}))}}
+    return {reason:r.reason,winner:a[0]?a[0].id:null,mode:r.mode,players:a.map(p=>({id:p.id,name:p.name,ti:!!p.ti,plane:p.plane,ai:!!p.ai,res:p.res||null,rank:p.rank,rm:!!p.rm,team:p.team,leg:p.leg}))}}
   function closeMatch(r,reason){
     if(r.state!=='playing')return;
     clearTimeout(r.endT);r.state='result';r.reason=reason;r.pend=null;r.resultAt=Date.now();
-    for(const p of list(r)){if(!p.res)p.res={fin:false,prog:p.lastProg||0,touches:'',coins:'',live:true};p.rm=!!p.ai}
+    for(const p of list(r)){if(!p.res)p.res={fin:false,prog:p.lastProg||0,touches:'',coins:'',live:true,waiting:isRelay(r)&&p.leg===2&&!p.started};p.rm=!!p.ai}
     toRoom(r,'result',resView(r));
   }
   function checkEnd(r){
-    const a=list(r),act=a.filter(p=>!p.res).length,fin=a.filter(p=>p.res&&p.res.fin).length;
+    const a=list(r),act=a.filter(p=>!p.res).length,fin=a.filter(p=>p.res&&p.res.fin&&!p.res.baton).length;
     if(act===0)closeMatch(r,fin?'finish':'out');
   }
   const mkRes=d=>({fin:!!d.fin,prog:Math.max(0,Math.min(1,+d.prog||0)),touches:+d.touches||0,coins:+d.coins||0,time:+d.time||0});
@@ -151,9 +230,11 @@ function RoomHub(send){
       return;
     }
     if(r.state!=='playing'||p.res)return;
+    if(isRelay(r)&&p.leg===1)return;
     p.res=mkRes(d);
     if(p.res.fin){p.finOrder=++r.finN;toRoom(r,'rank',{id:p.id,rank:p.finOrder});
-      if(r.finN===1&&list(r).some(x=>!x.res)){r.endT=setTimeout(()=>closeMatch(r,'finish'),END_WAIT);toRoom(r,'endIn',{ms:END_WAIT})}}
+      if(isRelay(r)){const m=list(r).find(x=>x.team===p.team&&x!==p);if(m)toRoom(r,'rank',{id:m.id,rank:p.finOrder})}
+      if(r.finN===1&&list(r).some(x=>!x.res&&!(isRelay(r)&&x.team===p.team))){r.endT=setTimeout(()=>closeMatch(r,'finish'),END_WAIT);toRoom(r,'endIn',{ms:END_WAIT})}}
     else toRoom(r,'rank',{id:p.id,out:true,prog:p.res.prog});
     checkEnd(r);
   }
@@ -179,8 +260,11 @@ function RoomHub(send){
   }
   function startMatch(r,again){
     r.state='starting';r.finN=0;clearTimeout(r.endT);
-    for(const x of list(r)){x.ready=!!x.ai;x.res=null;x.rm=false;x.finOrder=0;x.lastProg=0;x.rank=0}
-    toRoom(r,'start',{level:r.level,diff:r.diff,again:!!again,ids:list(r).map(p=>p.id)});
+    for(const x of list(r)){x.ready=!!x.ai;x.res=null;x.rm=false;x.finOrder=0;x.lastProg=0;x.rank=0;x.leg=0;x.started=false}
+    const teams={},legs={};
+    if(isRelay(r))for(const t of ['A','B']){list(r).filter(x=>x.team===t).forEach((x,i)=>{x.leg=i+1;legs[x.id]=i+1})}
+    for(const x of list(r))teams[x.id]=x.team;
+    toRoom(r,'start',{level:r.level,diff:r.diff,again:!!again,ids:list(r).map(p=>p.id),ver:r.ver,prank:!!r.prank,mode:r.mode,teams,legs});
     sendRoom(r);
   }
   function handle(id,ev,d){
@@ -189,8 +273,8 @@ function RoomHub(send){
     switch(ev){
     case 'create':{
       leave(id);const code=newCode();
-      const nr={code,host:id,level:1,diff:'normal',state:'lobby',players:new Map(),finN:0};rooms.set(code,nr);
-      nr.players.set(id,{id,name:clean(d.name,12)||'玩家',plane:clean(d.plane,20),lr:false,ready:false,voice:false,res:null});
+      const nr={code,host:id,level:1,diff:'normal',state:'lobby',players:new Map(),finN:0,ver:d.ver==='2'?'2':'1',prank:false,mode:'race'};rooms.set(code,nr);
+      nr.players.set(id,{id,name:clean(d.name,12)||'玩家',ti:!!d.ti,plane:clean(d.plane,20),lr:false,ready:false,voice:false,res:null,team:'A'});
       where.set(id,code);sendRoom(nr);sys(nr,d.local?'電腦對戰房間已建立，可以加入 1～3 位電腦玩家':'房間已建立，房號 '+code);return}
     case 'join':{
       const code=clean(d.code,6),jr=rooms.get(code);
@@ -198,7 +282,7 @@ function RoomHub(send){
       if(jr.players.size>=MAXP)return send(id,'err','這個房間已經滿了（最多 4 人）');
       if(jr.state!=='lobby')return send(id,'err','這個房間正在對戰中，請稍後再加入');
       leave(id);const name=clean(d.name,12)||'玩家';
-      jr.players.set(id,{id,name,plane:clean(d.plane,20),lr:false,ready:false,voice:false,res:null});
+      jr.players.set(id,{id,name,ti:!!d.ti,plane:clean(d.plane,20),lr:false,ready:false,voice:false,res:null,team:pickTeam(jr)});
       where.set(id,code);sendRoom(jr);sys(jr,name+' 加入了房間');return}
     case 'leave':return leave(id);
     }
@@ -207,12 +291,17 @@ function RoomHub(send){
     case 'cfg':{
       if(r.host!==id||r.state!=='lobby')return;
       r.level=Math.max(1,Math.min(30,parseInt(d.level,10)||1));
-      r.diff=['normal','medium','hard','hell'].includes(d.diff)?d.diff:'normal';sendRoom(r);return}
+      r.diff=['normal','medium','hard','hell'].includes(d.diff)?d.diff:'normal';
+      if(d.ver!=null)r.ver=d.ver==='2'?'2':'1';if(d.prank!=null)r.prank=!!d.prank;if(d.mode!=null)r.mode=d.mode==='relay'?'relay':'race';
+      sendRoom(r);return}
+    case 'team':{
+      if(!isRelay(r)||r.state!=='lobby')return;const t=r.players.get(d.id||id);if(!t)return;
+      if(t.id!==id&&!(t.ai&&r.host===id))return;t.team=t.team==='A'?'B':'A';sendRoom(r);return}
     case 'addAi':{
       if(r.host!==id||r.state!=='lobby')return;
       if(r.players.size>=MAXP)return send(id,'err','房間已經滿了（最多 4 人）');
       const lvl=LVN[d.lvl]?d.lvl:'normal',aid='ai'+Math.random().toString(36).slice(2,8);
-      r.players.set(aid,{id:aid,ai:true,lvl,name:aiName(r,lvl),plane:aiPlane(r),lr:true,ready:true,res:null});
+      r.players.set(aid,{id:aid,ai:true,lvl,name:aiName(r,lvl),plane:aiPlane(r),lr:true,ready:true,res:null,team:pickTeam(r)});
       sendRoom(r);return}
     case 'delAi':{
       if(r.host!==id||r.state!=='lobby')return;const a=r.players.get(d.id);if(a&&a.ai)r.players.delete(d.id);sendRoom(r);return}
@@ -223,6 +312,7 @@ function RoomHub(send){
       if(r.host!==id||r.state!=='lobby')return;
       if(r.players.size<2)return send(id,'err','至少要 2 位玩家（可以加入電腦玩家）');
       if(humans(r).some(x=>!x.lr))return send(id,'err','還有玩家沒按「我準備好了」');
+      if(isRelay(r)){const a=list(r);if(a.length!==4||a.filter(x=>x.team==='A').length!==2)return send(id,'err','組隊接力賽要剛好 4 位玩家，紅隊、藍隊各 2 人（點名字旁的隊伍可以換隊）')}
       return startMatch(r,false);
     case 'ready':
       if(r.state!=='starting')return;p.ready=true;
@@ -245,6 +335,19 @@ function RoomHub(send){
     case 'back':
       if(r.state==='result'){r.state='lobby';for(const x of humans(r)){x.lr=false;x.ready=false;x.res=null;x.rm=false}}
       sendRoom(r);return;
+    case 'baton':{ // 接力：第一棒交棒（或出局）
+      let who=p;if(d.ai){const a=r.players.get(d.ai);if(!a||!a.ai||r.host!==id)return;who=a}
+      if(!isRelay(r)||r.state!=='playing'||who.leg!==1||who.res)return;
+      who.res={fin:!d.out,prog:Math.max(0,Math.min(1,+d.prog||0)),touches:+d.touches||0,coins:+d.coins||0,baton:1};
+      const m=list(r).find(x=>x.team===who.team&&x.leg===2);
+      toRoom(r,'relayNote',{id:who.id,name:who.name,team:who.team,out:!!d.out});
+      if(m){m.started=true;const pl={x:+d.x||0,out:!!d.out,id:m.id};if(m.ai)send(r.host,'batonAi',pl);else send(m.id,'baton',pl)}
+      checkEnd(r);return}
+    case 'prank':{ // 整人道具
+      if(r.state!=='playing')return;let from=p;if(d.ai){const a=r.players.get(d.ai);if(!a||!a.ai||r.host!==id)return;from=a}
+      const tg=r.players.get(d.to);if(!tg||tg===from)return;const kind=['ink','rev','lock','gust','ice'].includes(d.kind)?d.kind:'ink';
+      toRoom(r,'prankNote',{fromId:from.id,from:from.name,toId:tg.id,to:tg.name,kind});
+      if(tg.ai)send(r.host,'prankAi',{to:tg.id,kind,weak:!!d.weak});else send(tg.id,'prankHit',{kind,weak:!!d.weak,from:from.name});return}
     case 'rtc':if(d.to&&r.players.has(d.to))send(d.to,'rtc',{from:id,data:d.data});return;
     case 'rtc-renew':toRoom(r,'rtc-renew',{from:id},id);return;
     }
@@ -253,7 +356,7 @@ function RoomHub(send){
 }
 // ==ROOMHUB-END==
 const hub = RoomHub((id, ev, data, vol) => (vol ? io.volatile : io).to(id).emit(ev, data));
-const EVENTS = new Set(['create','join','leave','cfg','addAi','delAi','me','chat','start','ready','st','done','rematch','back','rtc','rtc-renew']);
+const EVENTS = new Set(['create','join','leave','cfg','addAi','delAi','me','chat','start','ready','st','done','rematch','back','rtc','rtc-renew','team','baton','prank']);
 io.on('connection', (sock) => {
   sock.onAny((ev, d) => { if (EVENTS.has(ev)) { try { hub.handle(sock.id, ev, d); } catch (e) { console.error('房間錯誤', e.message); } } });
   sock.on('disconnect', () => hub.leave(sock.id));
